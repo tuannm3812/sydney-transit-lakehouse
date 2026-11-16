@@ -1,0 +1,26 @@
+# Secrets (coding_standards §8)
+.env
+.env.*
+!.env.example
+
+# Landed data and generated reports stay out of git
+data/
+*.pb
+docs/reports/*
+!docs/reports/.gitkeep
+!docs/reports/quota-24h.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/

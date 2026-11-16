@@ -1,0 +1,92 @@
+# GTFS-realtime feeds polled by the collector.
+#
+# Quota maths (Bronze plan, checked 2026-11-16, see docs/3_decisions.md
+# D-004): 60,000 requests/day and 5 requests/second per API key. One feed
+# at 15 s costs 5,760 calls/day; at 30 s it costs 2,880. The collector
+# refuses to start if the enabled set exceeds QUOTA_BUDGET_FRACTION of
+# DAILY_QUOTA, so turning everything on cannot silently burn the quota.
+#
+# Paths marked "unverified" come from the TfNSW API catalogue naming
+# convention and must be confirmed on the first run with a real key: a
+# 404 shows up in the manifest and in the 24-hour report.
+
+[defaults]
+base_url = "https://api.transport.nsw.gov.au"
+vehicle_positions_interval_s = 15
+trip_updates_interval_s = 30
+
+# --- Enabled: buses are the headline products' mode -----------------------
+
+[[feeds]]
+name = "buses_vehiclepos"
+kind = "vehicle_positions"
+path = "/v1/gtfs/vehiclepos/buses"
+enabled = true
+
+[[feeds]]
+name = "buses_tripupdates"
+kind = "trip_updates"
+path = "/v1/gtfs/realtime/buses"
+enabled = true
+
+# --- Enabled: rail spine for cross-mode comparison ------------------------
+
+[[feeds]]
+name = "sydneytrains_vehiclepos"
+kind = "vehicle_positions"
+path = "/v2/gtfs/vehiclepos/sydneytrains"  # unverified
+enabled = true
+
+[[feeds]]
+name = "sydneytrains_tripupdates"
+kind = "trip_updates"
+path = "/v2/gtfs/realtime/sydneytrains"  # unverified
+enabled = true
+
+[[feeds]]
+name = "metro_vehiclepos"
+kind = "vehicle_positions"
+path = "/v2/gtfs/vehiclepos/metro"  # unverified
+enabled = true
+
+[[feeds]]
+name = "metro_tripupdates"
+kind = "trip_updates"
+path = "/v2/gtfs/realtime/metro"  # unverified
+enabled = true
+
+# --- Disabled until the real quota is confirmed ---------------------------
+# Ferries and NSW TrainLink refresh every 30 s upstream, so their vehicle
+# positions are polled at 30 s rather than 15 s.
+
+[[feeds]]
+name = "lightrail_innerwest_vehiclepos"
+kind = "vehicle_positions"
+path = "/v1/gtfs/vehiclepos/lightrail/innerwest"  # unverified
+enabled = false
+
+[[feeds]]
+name = "lightrail_innerwest_tripupdates"
+kind = "trip_updates"
+path = "/v1/gtfs/realtime/lightrail/innerwest"  # unverified
+enabled = false
+
+[[feeds]]
+name = "ferries_vehiclepos"
+kind = "vehicle_positions"
+path = "/v1/gtfs/vehiclepos/ferries/sydneyferries"  # unverified
+interval_s = 30
+enabled = false
+
+[[feeds]]
+name = "ferries_tripupdates"
+kind = "trip_updates"
+path = "/v1/gtfs/realtime/ferries/sydneyferries"  # unverified
+enabled = false
+
+[[feeds]]
+name = "nswtrains_vehiclepos"
+kind = "vehicle_positions"
+path = "/v1/gtfs/vehiclepos/nswtrains"  # unverified
+interval_s = 30
+enabled = false
