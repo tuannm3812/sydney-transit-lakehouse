@@ -16,7 +16,7 @@
 - [x] API token instructions (docs/5_api_token_setup.md)
 - [x] Decisions log started
 - [x] **Mike:** API key created and placed in `.env`
-- [ ] **Mike:** open decisions: hosting, dashboard visibility, repo name (D-011)
+- [x] **Mike:** open decisions: single VM, public dashboard, `sydney-transit-lakehouse` (D-014)
 - [ ] **Mike:** send the plan files (D-012)
 - [x] First live run: all 6 paths 200, 90 s at 100% capture, no limit headers exist; bursts get 429 (D-013)
 - [ ] Collector running on the always-on host
@@ -32,7 +32,7 @@
 
 ## Blocked on Mike
 
-- The three open decisions (hosting decides where the 7-day run starts) and the plan files.
+- An empty GitHub repo `sydney-transit-lakehouse`, a VM (Oracle Always Free sign-up), and the plan files.
 
 ## Next after the gate
 
