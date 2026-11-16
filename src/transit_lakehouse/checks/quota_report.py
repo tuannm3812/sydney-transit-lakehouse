@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +33,7 @@ from transit_lakehouse.collector.config import (
     load_feeds,
 )
 
+PROBE_SPACING_S = 1.5
 LIMIT_REASONS = ("rate_limited", "quota_exhausted", "http_503", "http_429")
 
 
@@ -161,7 +163,9 @@ def probe(feeds_path: Path) -> int:
     with httpx.Client(
         timeout=10, headers={"Authorization": f"apikey {key}"}
     ) as client:
-        for feed in load_feeds(feeds_path):
+        for i, feed in enumerate(load_feeds(feeds_path)):
+            if i:
+                time.sleep(PROBE_SPACING_S)  # back-to-back gets 429 (D-013)
             resp = client.get(feed.url)
             print(
                 f"## {feed.name} -> {resp.status_code}, "
@@ -169,6 +173,8 @@ def probe(feeds_path: Path) -> int:
             )
             for k, v in resp.headers.items():
                 print(f"  {k}: {v}")
+            if resp.status_code != 200:
+                print(f"  body: {resp.text[:300]}")
     return 0
 
 

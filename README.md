@@ -41,7 +41,7 @@ docker compose run --rm checks capture --window 7d --gate
 Without Docker:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate   # macOS's python3 is 3.9; use Homebrew Python ≥ 3.12
 pip install -e ".[dev]"
 set -a; source .env; set +a
 python -m transit_lakehouse.collector --check-config   # quota projection, no requests
@@ -53,7 +53,7 @@ python -m transit_lakehouse.collector
 | Requirement | How |
 |---|---|
 | Vehicle positions every 15 s, trip updates every 30 s | `config/feeds.toml`; drift-free schedule per feed |
-| Stagger requests | feeds start 1.5 s apart, and a global limiter keeps requests ≤ 4/s (TfNSW allows 5/s) |
+| Stagger requests | feeds start 1.5 s apart, and a global limiter keeps requests ≤ 1/s (TfNSW publishes 5/s, but bursts get 429, D-013) |
 | Back off on 429/503 | exponential backoff with jitter, `Retry-After` honoured; TfNSW's documented 403 "Over Rate Limit" also counts; 403 "Over Quota Limit" waits for the midnight-AEST reset |
 | Stamp fetch time | UTC fetch time in the filename and in the manifest, next to the feed's own header timestamp |
 | Skip unchanged snapshots | sha256 of the payload, and the last hash is recovered from the manifest after a restart |

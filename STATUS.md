@@ -2,7 +2,7 @@
 
 *Rewritten in place. Last updated 2026-11-16.*
 
-**Phase 0, "Collect first" (week 1).** The collector is built and tested, and it is waiting on the API key and an always-on host.
+**Phase 0, "Collect first" (week 1).** The collector is built, tested and verified live on all 6 enabled feeds (D-013). It is waiting on an always-on host to start the 7-day run.
 
 **Gate:** 7 consecutive days at ≥ 99% capture on every enabled feed (`checks capture --window 7d --gate` exits 0), and the real API quota confirmed by the 24-hour report.
 
@@ -15,10 +15,10 @@
 - [x] 24-hour quota and snapshot-size report
 - [x] API token instructions (docs/5_api_token_setup.md)
 - [x] Decisions log started
-- [ ] **Mike:** API key created and placed in `.env`
+- [x] **Mike:** API key created and placed in `.env`
 - [ ] **Mike:** open decisions: hosting, dashboard visibility, repo name (D-011)
 - [ ] **Mike:** send the plan files (D-012)
-- [ ] First live run: every feed path answers 200, then `--probe` headers recorded
+- [x] First live run: all 6 paths 200, 90 s at 100% capture, no limit headers exist; bursts get 429 (D-013)
 - [ ] Collector running on the always-on host
 - [ ] 24-hour report committed to `docs/reports/quota-24h.md`, quota row in D-004 updated
 - [ ] Day 1 to day 7 capture ≥ 99% (record each day below)
@@ -32,7 +32,7 @@
 
 ## Blocked on Mike
 
-- API key, the three open decisions, and the plan files.
+- The three open decisions (hosting decides where the 7-day run starts) and the plan files.
 
 ## Next after the gate
 

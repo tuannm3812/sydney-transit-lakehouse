@@ -73,3 +73,26 @@ def test_quota_report_mentions_confirmed_floor(tmp_path: Path) -> None:
     assert "5,760/day" in report
     assert "No rate or quota rejections" in report
     assert "| buses_vehiclepos |" in report
+
+
+def test_poll_at_window_start_does_not_exceed_expected(
+    tmp_path: Path,
+) -> None:
+    # 6 polls at 0,15,..,75 s inside an 80 s span = 6 slots, not 5.
+    lander = Lander(tmp_path)
+    for i in range(6):
+        ts = START + timedelta(seconds=15 * i)
+        lander.record(
+            PollRecord(
+                feed="f",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="new",
+                latency_ms=1,
+                header_timestamp=int(ts.timestamp()),
+            )
+        )
+    end = START + timedelta(seconds=80)
+    polls = read_polls(tmp_path, START, end)["f"]
+    r = evaluate_feed(_feed(), polls, START, end)
+    assert (r.ok, r.expected) == (6, 6)

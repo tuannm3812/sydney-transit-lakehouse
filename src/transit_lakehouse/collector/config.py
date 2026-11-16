@@ -10,7 +10,9 @@ from pathlib import Path
 SECONDS_PER_DAY = 86_400
 DEFAULT_DAILY_QUOTA = 60_000
 DEFAULT_BUDGET_FRACTION = 0.8
-DEFAULT_MAX_RPS = 4.0
+# The gateway returned 429 to 3 requests sent within ~1 s on 2026-11-16
+# (D-013), so its burst limit is tighter than the published 5/s.
+DEFAULT_MAX_RPS = 1.0
 VALID_KINDS = frozenset({"vehicle_positions", "trip_updates"})
 
 

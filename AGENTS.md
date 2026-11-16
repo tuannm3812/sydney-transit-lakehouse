@@ -20,5 +20,5 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 ## Open risks
 
 - The source plan (`sydney-transit-lakehouse-plan.md`) had not been received as of 2026-11-16. Phase 0 was built from Mike's message, so reconcile it once the plan arrives (D-012).
-- Rail, metro and other non-bus feed paths are unverified until the first run with a real key (D-004).
+- The 6 enabled feed paths were verified live on 2026-11-16 (D-013). Light rail, ferry and NSW TrainLink paths are still unverified. The gateway 429s on bursts, so keep MAX_RPS at 1.
 - The API key is a secret. It lives in `.env` only. Never print it, log it or paste it in chat.

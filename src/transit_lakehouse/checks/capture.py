@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import math
 import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -73,7 +74,8 @@ def evaluate_feed(
     # first started; the gate demands the full window.
     effective_start = start if gate or first is None else max(start, first)
     span = (end - effective_start).total_seconds()
-    expected = max(1, int(span // feed.interval_s))
+    # Slots in [start, end): a poll at the very start counts, so ceil.
+    expected = max(1, math.ceil(span / feed.interval_s))
     ok_polls = [p for p in polls if p.ok]
     capture = min(1.0, len(ok_polls) / expected)
 
