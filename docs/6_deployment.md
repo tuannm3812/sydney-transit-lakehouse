@@ -12,7 +12,7 @@
 | Location | any. The collector only makes outbound calls every 15 s, so latency to Sydney doesn't matter (Singapore or Helsinki are fine) |
 | Image | **Ubuntu 24.04** |
 | Type | **Shared vCPU, Arm64 → CAX11** (2 vCPU, 4 GB), about €4/month. Resize to CAX31 (8 vCPU, 16 GB) in place for Phase 1 |
-| Networking | public IPv4 on (it's a small extra fee). Without it the VM cannot reach TfNSW's IPv4-only API |
+| Networking | public IPv4 on (it's a small extra fee). Keep it, because an IPv6-only server may not reach TfNSW's API or Docker Hub |
 | SSH keys | add your Mac's `~/.ssh/id_ed25519.pub` (run `ssh-keygen -t ed25519` first if you don't have one) |
 | Backups | off for Phase 0 |
 
