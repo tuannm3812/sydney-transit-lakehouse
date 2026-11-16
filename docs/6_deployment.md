@@ -1,6 +1,26 @@
-# 6. Deployment: the Phase 0 collector on Oracle Cloud Always Free
+# 6. Deployment: the Phase 0 collector on a single VM
 
 *Written 2026-11-16. Per D-014: one VM running Docker Compose. Oracle's console moves things around now and then, so if a label below doesn't match, look for the nearest equivalent.*
+
+## Option A: Hetzner Cloud (recommended after Oracle sign-up failed, 2026-11-17)
+
+1. Sign up at <https://accounts.hetzner.com/signUp>. Hetzner may ask for ID or a small PayPal or card verification.
+2. **Cloud Console → New project → Add server**:
+
+| Setting | Value |
+|---|---|
+| Location | any. The collector only makes outbound calls every 15 s, so latency to Sydney doesn't matter (Singapore or Helsinki are fine) |
+| Image | **Ubuntu 24.04** |
+| Type | **Shared vCPU, Arm64 → CAX11** (2 vCPU, 4 GB), about €4/month. Resize to CAX31 (8 vCPU, 16 GB) in place for Phase 1 |
+| Networking | public IPv4 on (it's a small extra fee). Without it the VM cannot reach TfNSW's IPv4-only API |
+| SSH keys | add your Mac's `~/.ssh/id_ed25519.pub` (run `ssh-keygen -t ed25519` first if you don't have one) |
+| Backups | off for Phase 0 |
+
+3. SSH in with `ssh root@<ip>` and run the bootstrap in step 3 below. Hetzner logs you in as `root`, and the script works the same way.
+
+Check Hetzner's current prices before you pick: they adjust them from time to time.
+
+## Option B: Oracle Cloud Always Free
 
 ## 1. Account (once)
 
@@ -56,4 +76,4 @@ docker compose run --rm checks capture --window 15m
 
 ## Cost
 
-$0 inside Always Free (4 OCPU, 24 GB, 200 GB block storage, 10 TB/month egress). Overnight raw volume was about 0.5 GB/day (D-013), so 7 days of Phase 0 fit easily on the boot volume.
+Hetzner: about AUD 7/month for CAX11 plus IPv4. Oracle: $0 inside Always Free (4 OCPU, 24 GB, 200 GB block storage, 10 TB/month egress). Overnight raw volume was about 0.5 GB/day (D-013), so 7 days of Phase 0 fit easily on the boot volume.
