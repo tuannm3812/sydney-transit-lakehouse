@@ -20,8 +20,8 @@ Go to **EC2 → Instances → Launch instances**:
 | Setting | Value |
 |---|---|
 | Name | `transit-collector` |
-| AMI | **Ubuntu Server 24.04 LTS**, architecture **64-bit (Arm)** |
-| Instance type | **t4g.small** (2 vCPU, 2 GB), about USD 12/month plus about USD 3.60 for the public IPv4, paid from credits |
+| AMI | **Ubuntu Server 24.04 LTS**, architecture **64-bit (x86)** (not 26.04: Docker's installer may lag a new release) |
+| Instance type | **t3.small** (2 vCPU, 2 GB). The Free plan allows only "Free tier eligible" types, and t3.micro's 1 GB is too small to build the image. About USD 0.026/h, or USD 19/month plus about USD 3.60 for the public IPv4, paid from credits |
 | Key pair | **Create new key pair**, ED25519, .pem, which downloads `transit-collector.pem` |
 | Network | default VPC, **auto-assign public IP: enable**, and a security group allowing **SSH from My IP** only |
 | Storage | **30 GB gp3** |
@@ -113,4 +113,4 @@ docker compose run --rm checks capture --window 15m
 
 ## Cost
 
-AWS: t4g.small, 30 GB gp3 and a public IPv4 come to about USD 18/month, covered by Free plan credits. Hetzner: about AUD 7/month for CAX11 plus IPv4. Oracle: $0 inside Always Free (4 OCPU, 24 GB, 200 GB block storage, 10 TB/month egress). Overnight raw volume was about 0.5 GB/day (D-013), so 7 days of Phase 0 fit easily on the boot volume.
+AWS: t3.small, 30 GB gp3 and a public IPv4 come to about USD 23/month (the USD 100 sign-up credit lasts about 4 months), covered by Free plan credits. Hetzner: about AUD 7/month for CAX11 plus IPv4. Oracle: $0 inside Always Free (4 OCPU, 24 GB, 200 GB block storage, 10 TB/month egress). Overnight raw volume was about 0.5 GB/day (D-013), so 7 days of Phase 0 fit easily on the boot volume.

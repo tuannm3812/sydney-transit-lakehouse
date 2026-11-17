@@ -20,7 +20,7 @@
 - [ ] **Mike:** send the plan files (D-012)
 - [x] First live run: all 6 paths 200, 90 s at 100% capture, no limit headers exist; bursts get 429 (D-013)
 - [x] VM bootstrap script and deployment guide (docs/6_deployment.md)
-- [ ] **Mike:** AWS account (MFA and zero-spend budget) and the t4g.small instance in Sydney (D-015)
+- [ ] **Mike:** AWS account (MFA and zero-spend budget) and the t3.small instance in Sydney (D-015, D-016)
 - [ ] Collector running on the always-on host
 - [ ] 24-hour report committed to `docs/reports/quota-24h.md`, quota row in D-004 updated
 - [ ] Day 1 to day 7 capture ≥ 99% (record each day below)
