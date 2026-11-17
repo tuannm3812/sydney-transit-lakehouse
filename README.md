@@ -57,7 +57,7 @@ python -m transit_lakehouse.collector
 | Back off on 429/503 | exponential backoff with jitter, `Retry-After` honoured; TfNSW's documented 403 "Over Rate Limit" also counts; 403 "Over Quota Limit" waits for the midnight-AEST reset |
 | Stamp fetch time | UTC fetch time in the filename and in the manifest, next to the feed's own header timestamp |
 | Skip unchanged snapshots | sha256 of the payload, and the last hash is recovered from the manifest after a restart |
-| Land raw protobuf by feed and hour | `data/raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<fetched_at>_<sha>.pb`, written atomically |
+| Land raw protobuf by feed and hour | `data/raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<fetched_at>_<sha>.pb.gz`, gzip-compressed and written atomically |
 | Capture-rate and freshness check | `transit_lakehouse.checks.capture`, which reads the append-only poll manifest |
 | 24-hour quota and size report | `transit_lakehouse.checks.quota_report` |
 | Quota guard | refuses to start if enabled feeds would use more than 80% of the daily quota |

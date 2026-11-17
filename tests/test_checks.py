@@ -96,3 +96,69 @@ def test_poll_at_window_start_does_not_exceed_expected(
     polls = read_polls(tmp_path, START, end)["f"]
     r = evaluate_feed(_feed(), polls, START, end)
     assert (r.ok, r.expected) == (6, 6)
+
+
+def test_cli_defaults_follow_data_dir_env(monkeypatch, tmp_path: Path) -> None:
+    # Regression: in the container DATA_DIR=/data, and the checks must
+    # read the same place the collector writes (found on the EC2 host).
+    from transit_lakehouse.checks import capture
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "elsewhere"))
+    seen = {}
+
+    def fake_read(data_dir, start, end):
+        seen["dir"] = data_dir
+        return {}
+
+    monkeypatch.setattr(capture, "read_polls", fake_read)
+    repo = Path(__file__).resolve().parents[1]
+    feeds = str(repo / "config/feeds.toml")
+    capture.main(["--feeds", feeds, "--window", "1m"])
+    assert seen["dir"] == tmp_path / "elsewhere"
+
+
+def test_quota_rate_uses_observed_span_not_window(tmp_path: Path) -> None:
+    # 1 hour of polls inside a 24 h window must report 5,760/day, not 240.
+    _write(tmp_path, "buses_vehiclepos")
+    report = build_report(
+        read_polls(tmp_path, END - timedelta(hours=24), END),
+        END - timedelta(hours=24),
+        END,
+        60_000,
+    )
+    assert "5,760/day" in report
+
+
+def _write_frozen(tmp: Path, frozen_polls: int) -> None:
+    """One new snapshot, then ``frozen_polls`` unchanged ones at 15 s."""
+    lander = Lander(tmp)
+    for i in range(240):
+        ts = START + timedelta(seconds=15 * i)
+        frozen = 0 < i % 120 <= frozen_polls
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="unchanged" if frozen else "new",
+                latency_ms=50,
+                header_timestamp=int(ts.timestamp()) - 8,
+            )
+        )
+
+
+def test_stuck_feed_warns_but_passes(tmp_path: Path) -> None:
+    _write_frozen(tmp_path, frozen_polls=24)  # 6 minutes frozen
+    polls = read_polls(tmp_path, START, END)["buses_vehiclepos"]
+    r = evaluate_feed(_feed(), polls, START, END)
+    assert r.passed, r.failures
+    assert r.longest_unchanged_s == 360
+    assert r.warnings and r.warnings[0].startswith("stuck")
+
+
+def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
+    _write_frozen(tmp_path, frozen_polls=4)  # 1 minute
+    polls = read_polls(tmp_path, START, END)["buses_vehiclepos"]
+    r = evaluate_feed(_feed(), polls, START, END)
+    assert r.longest_unchanged_s == 60
+    assert not r.warnings

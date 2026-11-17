@@ -15,6 +15,9 @@ Definitions (see docs/3_decisions.md D-007):
   and learned nothing moved.
 * freshness = fetch time minus the feed header's own timestamp.
 * staleness = now minus the last successful poll.
+* stuck = a realtime feed returning the same sha256 for more than
+  5 minutes. It is a warning, not a failure (D-019): the gateway is up
+  but upstream may have frozen, which only TfNSW can fix.
 """
 
 from __future__ import annotations
@@ -23,8 +26,9 @@ import argparse
 import itertools
 import json
 import math
+import os
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,7 +41,14 @@ from transit_lakehouse.checks.manifest import (
 from transit_lakehouse.collector.config import Feed, load_feeds
 
 CAPTURE_SLA = 0.99
-FRESHNESS_P95_SLA_S = {"vehicle_positions": 60.0, "trip_updates": 90.0}
+FRESHNESS_P95_SLA_S = {
+    "vehicle_positions": 60.0,
+    "trip_updates": 90.0,
+    "service_alerts": 300.0,
+    "static_gtfs": float("inf"),  # a daily zip has no header timestamp
+}
+# Plan: the same sha256 for more than 5 minutes means the feed is stuck.
+STUCK_AFTER_S = 300.0
 STALE_AFTER_INTERVALS = 4
 
 
@@ -54,6 +65,8 @@ class FeedResult:
     staleness_s: float | None
     coverage_start: str | None
     failures: list[str]
+    longest_unchanged_s: float | None = None
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -97,6 +110,11 @@ def evaluate_feed(
     if gate and (first is None or first > start):
         failures.append("insufficient history for the full window")
 
+    longest = longest_unchanged_s(ok_polls) if feed.is_realtime else None
+    warnings: list[str] = []
+    if longest is not None and longest > STUCK_AFTER_S:
+        warnings.append(f"stuck: same snapshot for {longest:.0f}s")
+
     return FeedResult(
         feed=feed.name,
         expected=expected,
@@ -109,7 +127,28 @@ def evaluate_feed(
         staleness_s=staleness,
         coverage_start=first.isoformat() if first else None,
         failures=failures,
+        longest_unchanged_s=longest,
+        warnings=warnings,
     )
+
+
+def longest_unchanged_s(ok_polls: list[Poll]) -> float | None:
+    """Longest time the payload hash stayed the same, in seconds.
+
+    Measured from the poll that landed a snapshot to the last poll that
+    still saw it. Unchanged polls before the first "new" in the window
+    are measured from the window's first poll.
+    """
+    if not ok_polls:
+        return None
+    longest = 0.0
+    since = ok_polls[0].fetched_at
+    for p in ok_polls:
+        if p.outcome == "new":
+            since = p.fetched_at
+        else:
+            longest = max(longest, (p.fetched_at - since).total_seconds())
+    return longest
 
 
 def _fmt(value: float | None, suffix: str = "s") -> str:
@@ -118,9 +157,16 @@ def _fmt(value: float | None, suffix: str = "s") -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument(
-        "--feeds", type=Path, default=Path("config/feeds.toml")
+        "--data-dir",
+        type=Path,
+        # Same env var the collector writes to, so containers agree.
+        default=Path(os.environ.get("DATA_DIR", "data")),
+    )
+    parser.add_argument(
+        "--feeds",
+        type=Path,
+        default=Path(os.environ.get("FEEDS_CONFIG", "config/feeds.toml")),
     )
     parser.add_argument("--window", default="24h")
     parser.add_argument(
@@ -147,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     for r in results:
         status = "PASS" if r.passed else "FAIL " + "; ".join(r.failures)
+        if r.warnings:
+            status += " (WARN " + "; ".join(r.warnings) + ")"
         print(
             f"{r.feed:<32}{r.capture_rate:>9.2%}"
             f"{f'{r.ok}/{r.expected}':>14}"

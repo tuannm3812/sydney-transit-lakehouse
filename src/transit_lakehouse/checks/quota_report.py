@@ -57,13 +57,18 @@ def build_report(
     daily_quota: int,
 ) -> str:
     """Render the markdown report."""
-    days = max((end - start).total_seconds() / 86400, 1e-9)
+    # Rate over the time we actually have data for, not the requested
+    # window: a collector started 4 minutes ago is not running at 4/60
+    # of its real rate.
+    firsts = [p[0].fetched_at for p in polls.values() if p]
+    observed_start = max(start, min(firsts)) if firsts else start
+    days = max((end - observed_start).total_seconds() / 86400, 1e-9)
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
     lines = [
         "# API quota and snapshot size report",
         "",
         f"Window: {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC "
-        f"({days * 24:.1f} h). Generated {generated} UTC.",
+        f"({days * 24:.1f} h of data). Generated {generated} UTC.",
         "",
         "## Requests and limit signals",
         "",
@@ -115,26 +120,40 @@ def build_report(
     lines += [
         "## Snapshot sizes (successful polls)",
         "",
-        "| feed | p50 | p95 | max | landed/day | landed/30 days |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| feed | p50 | p95 | max | received/day | on disk/day "
+        "| on disk/30 days |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     landed_total = 0.0
+    stored_total = 0.0
     for feed, items in sorted(polls.items()):
         sizes = [float(p.size_bytes) for p in items if p.ok]
         landed = sum(p.size_bytes for p in items if p.outcome == "new")
+        # Polls landed before gzip (D-017) have no stored_bytes, so scale
+        # received bytes by the ratio seen on polls that do.
+        gz = [p for p in items if p.outcome == "new" and p.stored_bytes]
+        ratio = (
+            sum(p.stored_bytes for p in gz) / sum(p.size_bytes for p in gz)
+            if gz and sum(p.size_bytes for p in gz)
+            else 1.0
+        )
+        stored = landed * ratio
         landed_total += landed
+        stored_total += stored
         if not sizes:
-            lines.append(f"| {feed} | - | - | - | - | - |")
+            lines.append(f"| {feed} | - | - | - | - | - | - |")
             continue
         lines.append(
             f"| {feed} | {_mb(percentile(sizes, 0.5) or 0)} "
             f"| {_mb(percentile(sizes, 0.95) or 0)} | {_mb(max(sizes))} "
-            f"| {_mb(landed / days)} | {_mb(landed / days * 30)} |"
+            f"| {_mb(landed / days)} | {_mb(stored / days)} "
+            f"| {_mb(stored / days * 30)} |"
         )
     lines += [
         "",
-        f"Raw landing rate: **{_mb(landed_total / days)}/day, "
-        f"{landed_total / days * 30 / 1e9:,.1f} GB per 30 days** "
+        f"Received {_mb(landed_total / days)}/day. On disk after gzip: "
+        f"**{_mb(stored_total / days)}/day, "
+        f"{stored_total / days * 30 / 1e9:,.1f} GB per 30 days** "
         "before compaction into Iceberg.",
         "",
         "## Response headers observed",
@@ -152,7 +171,7 @@ def build_report(
     return "\n".join(lines) + "\n"
 
 
-def probe(feeds_path: Path) -> int:
+def probe(feeds_path: Path, only: list[str] | None = None) -> int:
     """One live request per feed, printing every header."""
     import httpx  # imported here so the report runs without a key
 
@@ -163,10 +182,13 @@ def probe(feeds_path: Path) -> int:
     with httpx.Client(
         timeout=10, headers={"Authorization": f"apikey {key}"}
     ) as client:
-        for i, feed in enumerate(load_feeds(feeds_path)):
+        feeds = [
+            f for f in load_feeds(feeds_path) if not only or f.name in only
+        ]
+        for i, feed in enumerate(feeds):
             if i:
                 time.sleep(PROBE_SPACING_S)  # back-to-back gets 429 (D-013)
-            resp = client.get(feed.url)
+            resp = client.get(feed.url, timeout=feed.timeout_s)
             print(
                 f"## {feed.name} -> {resp.status_code}, "
                 f"{len(resp.content):,} bytes"
@@ -180,9 +202,16 @@ def probe(feeds_path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument(
-        "--feeds", type=Path, default=Path("config/feeds.toml")
+        "--data-dir",
+        type=Path,
+        # Same env var the collector writes to, so containers agree.
+        default=Path(os.environ.get("DATA_DIR", "data")),
+    )
+    parser.add_argument(
+        "--feeds",
+        type=Path,
+        default=Path(os.environ.get("FEEDS_CONFIG", "config/feeds.toml")),
     )
     parser.add_argument("--window", default="24h")
     parser.add_argument(
@@ -192,9 +221,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, help="Write markdown here.")
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="FEED",
+        help="With --probe: probe just this feed (repeatable).",
+    )
     args = parser.parse_args(argv)
     if args.probe:
-        return probe(args.feeds)
+        return probe(args.feeds, args.only)
 
     end = datetime.now(UTC)
     start = end - parse_window(args.window)

@@ -30,6 +30,7 @@ class Poll:
     status: int | None
     outcome: str
     size_bytes: int
+    stored_bytes: int
     header_timestamp: int | None
     error: str | None
     headers: dict[str, str]
@@ -83,6 +84,7 @@ def read_polls(
                         status=raw.get("status"),
                         outcome=raw.get("outcome", ""),
                         size_bytes=int(raw.get("size_bytes") or 0),
+                        stored_bytes=int(raw.get("stored_bytes") or 0),
                         header_timestamp=raw.get("header_timestamp"),
                         error=raw.get("error"),
                         headers=raw.get("headers") or {},

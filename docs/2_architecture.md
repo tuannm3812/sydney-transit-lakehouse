@@ -12,7 +12,7 @@ Hub         │   → GET with "Authorization: apikey …"                      
             │             new?       → atomic write .pb + manifest            │
             └─────────────────────────────────────────────────────────────────┘
                      │                                   │
-     data/raw/feed=…/date=…/hour=…/*.pb      data/manifest/feed=…/date=…/hour=….jsonl
+     data/raw/feed=…/date=…/hour=…/*.pb.gz     data/manifest/feed=…/date=…/hour=….jsonl
                                                          │
                                checks capture (SLA, exit 1 on breach)
                                checks quota  (24 h quota + size report)
@@ -20,7 +20,7 @@ Hub         │   → GET with "Authorization: apikey …"                      
 
 ### On-disk layout
 
-- `raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<YYYYMMDDTHHMMSS.ffffffZ>_<sha12>.pb` holds the exact bytes TfNSW returned, only when they differ from the previous snapshot of that feed.
+- `raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<YYYYMMDDTHHMMSS.ffffffZ>_<sha12>.pb.gz` holds the exact bytes TfNSW returned, gzip-compressed (D-017), only when they differ from the previous snapshot of that feed.
 - `manifest/feed=<feed>/date=YYYY-MM-DD/hour=HH.jsonl` has one line per poll attempt: `fetched_at`, `status`, `outcome` (`new`, `unchanged`, `http_error`, `network_error`), `latency_ms`, `size_bytes`, `sha256`, the feed header timestamp, entity count, the landed path, the error, and the limit-related response headers.
 - `_heartbeat` holds the last successful poll time and drives the container healthcheck.
 
