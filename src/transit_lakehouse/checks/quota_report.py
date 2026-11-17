@@ -129,7 +129,15 @@ def build_report(
     for feed, items in sorted(polls.items()):
         sizes = [float(p.size_bytes) for p in items if p.ok]
         landed = sum(p.size_bytes for p in items if p.outcome == "new")
-        stored = sum(p.stored_bytes for p in items if p.outcome == "new")
+        # Polls landed before gzip (D-017) have no stored_bytes, so scale
+        # received bytes by the ratio seen on polls that do.
+        gz = [p for p in items if p.outcome == "new" and p.stored_bytes]
+        ratio = (
+            sum(p.stored_bytes for p in gz) / sum(p.size_bytes for p in gz)
+            if gz and sum(p.size_bytes for p in gz)
+            else 1.0
+        )
+        stored = landed * ratio
         landed_total += landed
         stored_total += stored
         if not sizes:
