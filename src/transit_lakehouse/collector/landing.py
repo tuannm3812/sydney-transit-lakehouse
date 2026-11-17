@@ -2,7 +2,7 @@
 
 Layout under ``data_dir`` (all partitions in UTC, see D-006)::
 
-    raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<fetched_at>_<sha12>.pb
+    raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<fetched_at>_<sha12>.pb.gz
     manifest/feed=<feed>/date=YYYY-MM-DD/hour=HH.jsonl
 
 Every poll attempt gets a manifest line, including failures and
@@ -11,6 +11,7 @@ unchanged snapshots, because capture rate is computed from it.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -28,7 +29,8 @@ class PollRecord:
     status: int | None  # HTTP status, None on network error
     outcome: str  # new | unchanged | http_error | network_error
     latency_ms: float
-    size_bytes: int = 0
+    size_bytes: int = 0  # payload as received, before compression
+    stored_bytes: int = 0  # on disk after gzip (D-017)
     sha256: str | None = None
     header_timestamp: int | None = None  # FeedHeader.timestamp, epoch s
     entity_count: int | None = None
@@ -63,6 +65,7 @@ class Lander:
     def __init__(self, data_dir: Path) -> None:
         self.data_dir = data_dir
         self._last_sha: dict[str, str] = {}
+        self.last_stored_bytes = 0
 
     def is_unchanged(self, feed: str, digest: str) -> bool:
         if feed not in self._last_sha:
@@ -79,10 +82,14 @@ class Lander:
             / f"feed={feed}"
             / f"date={date}"
             / f"hour={hour}"
-            / f"{stamp}_{digest[:12]}.pb"
+            / f"{stamp}_{digest[:12]}.pb.gz"
         )
-        _atomic_write(self.data_dir / rel, payload)
+        # Lossless and deterministic (mtime=0), so the bytes TfNSW sent
+        # are recoverable exactly; sha256 is of the uncompressed payload.
+        packed = gzip.compress(payload, compresslevel=6, mtime=0)
+        _atomic_write(self.data_dir / rel, packed)
         self._last_sha[feed] = digest
+        self.last_stored_bytes = len(packed)
         return rel.as_posix()
 
     def record(self, rec: PollRecord) -> None:

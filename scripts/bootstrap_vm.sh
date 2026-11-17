@@ -59,7 +59,9 @@ mkdir -p data docs/reports
 sudo chown -R 1000:1000 data docs/reports
 
 log "Checking the feed plan against the quota budget"
-$DOCKER compose build --quiet
+# --profile tools so the checks image is rebuilt too; plain `build`
+# skips services in inactive profiles and cron would run stale code.
+$DOCKER compose --profile tools build --quiet
 $DOCKER compose run --rm --entrypoint python collector \
   -m transit_lakehouse.collector --check-config
 

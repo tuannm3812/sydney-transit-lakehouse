@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 from datetime import UTC, datetime
 
 import httpx
@@ -35,9 +36,10 @@ async def test_new_then_unchanged(settings: Settings, feed: Feed) -> None:
     assert backoff1 == 0
     assert rec1.entity_count == 2
     assert rec1.fetched_at == NOW.isoformat()
-    landed = list((settings.data_dir / "raw").rglob("*.pb"))
+    landed = list((settings.data_dir / "raw").rglob("*.pb.gz"))
     assert len(landed) == 1
-    assert landed[0].read_bytes() == body
+    assert gzip.decompress(landed[0].read_bytes()) == body
+    assert rec1.stored_bytes > 0
 
 
 @respx.mock

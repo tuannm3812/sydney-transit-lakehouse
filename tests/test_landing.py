@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,8 @@ def test_land_partitions_by_feed_and_utc_hour(tmp_path: Path) -> None:
         "raw/feed=buses_vehiclepos/date=2026-11-16/hour=23/"
         "20261116T235958.123456Z_"
     )
-    assert (tmp_path / rel).read_bytes() == b"abc"
+    assert rel.endswith(".pb.gz")
+    assert gzip.decompress((tmp_path / rel).read_bytes()) == b"abc"
     assert not list(tmp_path.rglob("*.tmp"))
 
 

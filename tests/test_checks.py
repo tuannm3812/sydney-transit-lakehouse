@@ -115,3 +115,15 @@ def test_cli_defaults_follow_data_dir_env(monkeypatch, tmp_path: Path) -> None:
     feeds = str(repo / "config/feeds.toml")
     capture.main(["--feeds", feeds, "--window", "1m"])
     assert seen["dir"] == tmp_path / "elsewhere"
+
+
+def test_quota_rate_uses_observed_span_not_window(tmp_path: Path) -> None:
+    # 1 hour of polls inside a 24 h window must report 5,760/day, not 240.
+    _write(tmp_path, "buses_vehiclepos")
+    report = build_report(
+        read_polls(tmp_path, END - timedelta(hours=24), END),
+        END - timedelta(hours=24),
+        END,
+        60_000,
+    )
+    assert "5,760/day" in report

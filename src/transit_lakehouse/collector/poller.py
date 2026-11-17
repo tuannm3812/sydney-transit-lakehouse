@@ -145,6 +145,7 @@ class Collector:
             # Land even if parsing failed: raw bytes are the source of
             # truth and a bad payload is evidence worth keeping.
             rec.path = self.lander.land(feed.name, fetched_at, payload)
+            rec.stored_bytes = self.lander.last_stored_bytes
         self.lander.record(rec)
         self._heartbeat()
         return rec, 0.0

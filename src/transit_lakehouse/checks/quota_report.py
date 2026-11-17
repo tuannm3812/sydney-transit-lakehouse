@@ -57,13 +57,18 @@ def build_report(
     daily_quota: int,
 ) -> str:
     """Render the markdown report."""
-    days = max((end - start).total_seconds() / 86400, 1e-9)
+    # Rate over the time we actually have data for, not the requested
+    # window: a collector started 4 minutes ago is not running at 4/60
+    # of its real rate.
+    firsts = [p[0].fetched_at for p in polls.values() if p]
+    observed_start = max(start, min(firsts)) if firsts else start
+    days = max((end - observed_start).total_seconds() / 86400, 1e-9)
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
     lines = [
         "# API quota and snapshot size report",
         "",
         f"Window: {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC "
-        f"({days * 24:.1f} h). Generated {generated} UTC.",
+        f"({days * 24:.1f} h of data). Generated {generated} UTC.",
         "",
         "## Requests and limit signals",
         "",
@@ -115,26 +120,32 @@ def build_report(
     lines += [
         "## Snapshot sizes (successful polls)",
         "",
-        "| feed | p50 | p95 | max | landed/day | landed/30 days |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| feed | p50 | p95 | max | received/day | on disk/day "
+        "| on disk/30 days |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     landed_total = 0.0
+    stored_total = 0.0
     for feed, items in sorted(polls.items()):
         sizes = [float(p.size_bytes) for p in items if p.ok]
         landed = sum(p.size_bytes for p in items if p.outcome == "new")
+        stored = sum(p.stored_bytes for p in items if p.outcome == "new")
         landed_total += landed
+        stored_total += stored
         if not sizes:
-            lines.append(f"| {feed} | - | - | - | - | - |")
+            lines.append(f"| {feed} | - | - | - | - | - | - |")
             continue
         lines.append(
             f"| {feed} | {_mb(percentile(sizes, 0.5) or 0)} "
             f"| {_mb(percentile(sizes, 0.95) or 0)} | {_mb(max(sizes))} "
-            f"| {_mb(landed / days)} | {_mb(landed / days * 30)} |"
+            f"| {_mb(landed / days)} | {_mb(stored / days)} "
+            f"| {_mb(stored / days * 30)} |"
         )
     lines += [
         "",
-        f"Raw landing rate: **{_mb(landed_total / days)}/day, "
-        f"{landed_total / days * 30 / 1e9:,.1f} GB per 30 days** "
+        f"Received {_mb(landed_total / days)}/day. On disk after gzip: "
+        f"**{_mb(stored_total / days)}/day, "
+        f"{stored_total / days * 30 / 1e9:,.1f} GB per 30 days** "
         "before compaction into Iceberg.",
         "",
         "## Response headers observed",
