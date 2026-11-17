@@ -162,3 +162,11 @@ def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
     r = evaluate_feed(_feed(), polls, START, END)
     assert r.longest_unchanged_s == 60
     assert not r.warnings
+
+
+def test_slow_feed_window_looks_back_two_intervals() -> None:
+    from transit_lakehouse.checks.capture import feed_window_start
+
+    static = Feed("static_gtfs", "static_gtfs", "https://x", 21600)
+    assert feed_window_start(static, START, END) == END - timedelta(hours=12)
+    assert feed_window_start(_feed(), START, END) == START

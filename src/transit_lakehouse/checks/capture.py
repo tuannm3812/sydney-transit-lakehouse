@@ -29,7 +29,7 @@ import math
 import os
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from transit_lakehouse.checks.manifest import (
@@ -151,6 +151,15 @@ def longest_unchanged_s(ok_polls: list[Poll]) -> float | None:
     return longest
 
 
+def feed_window_start(feed: Feed, start: datetime, end: datetime) -> datetime:
+    """Widen the window for feeds polled less often than it spans.
+
+    A 1 h window over a 6-hourly feed usually holds no poll at all, which
+    would read as a stale feed. Look back at least two intervals instead.
+    """
+    return min(start, end - timedelta(seconds=2 * feed.interval_s))
+
+
 def _fmt(value: float | None, suffix: str = "s") -> str:
     return "-" if value is None else f"{value:.0f}{suffix}"
 
@@ -180,9 +189,20 @@ def main(argv: list[str] | None = None) -> int:
     end = datetime.now(UTC)
     start = end - parse_window(args.window)
     feeds = load_feeds(args.feeds)
-    polls = read_polls(args.data_dir, start, end)
+    starts = {f.name: feed_window_start(f, start, end) for f in feeds}
+    polls = read_polls(args.data_dir, min(starts.values()), end)
     results = [
-        evaluate_feed(f, polls.get(f.name, []), start, end, args.gate)
+        evaluate_feed(
+            f,
+            [
+                p
+                for p in polls.get(f.name, [])
+                if p.fetched_at >= starts[f.name]
+            ],
+            starts[f.name],
+            end,
+            args.gate,
+        )
         for f in feeds
     ]
 
