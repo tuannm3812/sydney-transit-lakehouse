@@ -180,9 +180,16 @@ def probe(feeds_path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument(
-        "--feeds", type=Path, default=Path("config/feeds.toml")
+        "--data-dir",
+        type=Path,
+        # Same env var the collector writes to, so containers agree.
+        default=Path(os.environ.get("DATA_DIR", "data")),
+    )
+    parser.add_argument(
+        "--feeds",
+        type=Path,
+        default=Path(os.environ.get("FEEDS_CONFIG", "config/feeds.toml")),
     )
     parser.add_argument("--window", default="24h")
     parser.add_argument(

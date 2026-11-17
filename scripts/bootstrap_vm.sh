@@ -45,6 +45,15 @@ if ! grep -qs '^TFNSW_API_KEY=.\{20,\}' .env; then
   chmod 600 .env
 fi
 
+if [ ! -f /swapfile ] && [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 4096 ]; then
+  log "Adding 2 GB swap (small instance, Docker builds need headroom)"
+  sudo fallocate -l 2G /swapfile
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile >/dev/null
+  sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+
 mkdir -p data docs/reports
 # The container runs as uid 1000; make sure it can write the data dir.
 sudo chown -R 1000:1000 data docs/reports
@@ -61,7 +70,9 @@ $DOCKER compose up -d collector
 CRON_LINE="5 0 * * * cd $APP_DIR && docker compose run --rm checks capture --window 24h --json docs/reports/capture-\$(date -u +\\%Y\\%m\\%d).json >> docs/reports/capture.log 2>&1"
 if ! crontab -l 2>/dev/null | grep -q 'checks capture'; then
   log "Scheduling the daily capture check (00:05 UTC)"
-  (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+  # `crontab -l` exits 1 for a user with no crontab; under `set -e`
+  # that would abort the subshell before the echo.
+  (crontab -l 2>/dev/null || true; echo "$CRON_LINE") | crontab -
 fi
 
 log "Done. Useful commands:"

@@ -96,3 +96,22 @@ def test_poll_at_window_start_does_not_exceed_expected(
     polls = read_polls(tmp_path, START, end)["f"]
     r = evaluate_feed(_feed(), polls, START, end)
     assert (r.ok, r.expected) == (6, 6)
+
+
+def test_cli_defaults_follow_data_dir_env(monkeypatch, tmp_path: Path) -> None:
+    # Regression: in the container DATA_DIR=/data, and the checks must
+    # read the same place the collector writes (found on the EC2 host).
+    from transit_lakehouse.checks import capture
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "elsewhere"))
+    seen = {}
+
+    def fake_read(data_dir, start, end):
+        seen["dir"] = data_dir
+        return {}
+
+    monkeypatch.setattr(capture, "read_polls", fake_read)
+    repo = Path(__file__).resolve().parents[1]
+    feeds = str(repo / "config/feeds.toml")
+    capture.main(["--feeds", feeds, "--window", "1m"])
+    assert seen["dir"] == tmp_path / "elsewhere"
