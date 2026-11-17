@@ -96,7 +96,7 @@ class Collector:
         payload = b""
         error: str | None = None
         try:
-            resp = await self._client.get(feed.url)
+            resp = await self._client.get(feed.url, timeout=feed.timeout_s)
             status = resp.status_code
             headers = keep_headers(resp.headers)
             payload = resp.content
@@ -133,7 +133,10 @@ class Collector:
             return rec, verdict.backoff_s
 
         digest = sha256_hex(payload)
-        header_ts, n_entities, parse_err = parse_header(payload)
+        if feed.is_realtime:
+            header_ts, n_entities, parse_err = parse_header(payload)
+        else:
+            header_ts, n_entities, parse_err = None, None, ""
         rec.size_bytes = len(payload)
         rec.sha256 = digest
         rec.header_timestamp = header_ts
@@ -144,7 +147,9 @@ class Collector:
         else:
             # Land even if parsing failed: raw bytes are the source of
             # truth and a bad payload is evidence worth keeping.
-            rec.path = self.lander.land(feed.name, fetched_at, payload)
+            rec.path = self.lander.land(
+                feed.name, fetched_at, payload, compress=feed.is_realtime
+            )
             rec.stored_bytes = self.lander.last_stored_bytes
         self.lander.record(rec)
         self._heartbeat()

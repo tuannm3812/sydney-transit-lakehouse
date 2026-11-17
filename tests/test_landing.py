@@ -55,3 +55,12 @@ def test_manifest_line_is_json(tmp_path: Path) -> None:
     )
     path = tmp_path / "manifest/feed=f/date=2026-11-16/hour=23.jsonl"
     assert json.loads(path.read_text())["status"] == 503
+
+
+def test_static_zip_lands_unmodified(tmp_path: Path) -> None:
+    lander = Lander(tmp_path)
+    payload = b"PK\x03\x04 fake zip"
+    rel = lander.land("static_gtfs", TS, payload, compress=False)
+    assert rel.endswith(".zip")
+    assert (tmp_path / rel).read_bytes() == payload
+    assert lander.last_stored_bytes == len(payload)

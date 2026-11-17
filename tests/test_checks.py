@@ -127,3 +127,38 @@ def test_quota_rate_uses_observed_span_not_window(tmp_path: Path) -> None:
         60_000,
     )
     assert "5,760/day" in report
+
+
+def _write_frozen(tmp: Path, frozen_polls: int) -> None:
+    """One new snapshot, then ``frozen_polls`` unchanged ones at 15 s."""
+    lander = Lander(tmp)
+    for i in range(240):
+        ts = START + timedelta(seconds=15 * i)
+        frozen = 0 < i % 120 <= frozen_polls
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="unchanged" if frozen else "new",
+                latency_ms=50,
+                header_timestamp=int(ts.timestamp()) - 8,
+            )
+        )
+
+
+def test_stuck_feed_warns_but_passes(tmp_path: Path) -> None:
+    _write_frozen(tmp_path, frozen_polls=24)  # 6 minutes frozen
+    polls = read_polls(tmp_path, START, END)["buses_vehiclepos"]
+    r = evaluate_feed(_feed(), polls, START, END)
+    assert r.passed, r.failures
+    assert r.longest_unchanged_s == 360
+    assert r.warnings and r.warnings[0].startswith("stuck")
+
+
+def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
+    _write_frozen(tmp_path, frozen_polls=4)  # 1 minute
+    polls = read_polls(tmp_path, START, END)["buses_vehiclepos"]
+    r = evaluate_feed(_feed(), polls, START, END)
+    assert r.longest_unchanged_s == 60
+    assert not r.warnings

@@ -171,7 +171,7 @@ def build_report(
     return "\n".join(lines) + "\n"
 
 
-def probe(feeds_path: Path) -> int:
+def probe(feeds_path: Path, only: list[str] | None = None) -> int:
     """One live request per feed, printing every header."""
     import httpx  # imported here so the report runs without a key
 
@@ -182,10 +182,13 @@ def probe(feeds_path: Path) -> int:
     with httpx.Client(
         timeout=10, headers={"Authorization": f"apikey {key}"}
     ) as client:
-        for i, feed in enumerate(load_feeds(feeds_path)):
+        feeds = [
+            f for f in load_feeds(feeds_path) if not only or f.name in only
+        ]
+        for i, feed in enumerate(feeds):
             if i:
                 time.sleep(PROBE_SPACING_S)  # back-to-back gets 429 (D-013)
-            resp = client.get(feed.url)
+            resp = client.get(feed.url, timeout=feed.timeout_s)
             print(
                 f"## {feed.name} -> {resp.status_code}, "
                 f"{len(resp.content):,} bytes"
@@ -218,9 +221,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, help="Write markdown here.")
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="FEED",
+        help="With --probe: probe just this feed (repeatable).",
+    )
     args = parser.parse_args(argv)
     if args.probe:
-        return probe(args.feeds)
+        return probe(args.feeds, args.only)
 
     end = datetime.now(UTC)
     start = end - parse_window(args.window)

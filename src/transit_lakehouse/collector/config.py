@@ -13,7 +13,13 @@ DEFAULT_BUDGET_FRACTION = 0.8
 # The gateway returned 429 to 3 requests sent within ~1 s on 2026-11-16
 # (D-013), so its burst limit is tighter than the published 5/s.
 DEFAULT_MAX_RPS = 1.0
-VALID_KINDS = frozenset({"vehicle_positions", "trip_updates"})
+VALID_KINDS = frozenset(
+    {"vehicle_positions", "trip_updates", "service_alerts", "static_gtfs"}
+)
+# Kinds whose payload is a GTFS-realtime FeedMessage (the rest are zips).
+REALTIME_KINDS = frozenset(
+    {"vehicle_positions", "trip_updates", "service_alerts"}
+)
 
 
 class ConfigError(ValueError):
@@ -28,6 +34,11 @@ class Feed:
     kind: str
     url: str
     interval_s: float
+    timeout_s: float = 10.0
+
+    @property
+    def is_realtime(self) -> bool:
+        return self.kind in REALTIME_KINDS
 
     @property
     def calls_per_day(self) -> float:
@@ -75,6 +86,9 @@ def load_feeds(path: Path) -> tuple[Feed, ...]:
     intervals = {
         "vehicle_positions": defaults.get("vehicle_positions_interval_s", 15),
         "trip_updates": defaults.get("trip_updates_interval_s", 30),
+        "service_alerts": defaults.get("service_alerts_interval_s", 60),
+        # The static timetable changes at most daily (D-019).
+        "static_gtfs": defaults.get("static_gtfs_interval_s", 3600 * 6),
     }
     feeds: list[Feed] = []
     seen: set[str] = set()
@@ -97,6 +111,7 @@ def load_feeds(path: Path) -> tuple[Feed, ...]:
                 kind=kind,
                 url=base_url + entry["path"],
                 interval_s=interval,
+                timeout_s=float(entry.get("timeout_s", 10.0)),
             )
         )
     if not feeds:

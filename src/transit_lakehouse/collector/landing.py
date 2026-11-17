@@ -3,6 +3,7 @@
 Layout under ``data_dir`` (all partitions in UTC, see D-006)::
 
     raw/feed=<feed>/date=YYYY-MM-DD/hour=HH/<fetched_at>_<sha12>.pb.gz
+    (static GTFS timetables land as .zip, unmodified)
     manifest/feed=<feed>/date=YYYY-MM-DD/hour=HH.jsonl
 
 Every poll attempt gets a manifest line, including failures and
@@ -72,7 +73,13 @@ class Lander:
             self._last_sha[feed] = self._recover_last_sha(feed) or ""
         return self._last_sha[feed] == digest
 
-    def land(self, feed: str, ts: datetime, payload: bytes) -> str:
+    def land(
+        self,
+        feed: str,
+        ts: datetime,
+        payload: bytes,
+        compress: bool = True,
+    ) -> str:
         """Write a snapshot and return its path relative to data_dir."""
         digest = sha256_hex(payload)
         date, hour = partition(feed, ts)
@@ -82,11 +89,16 @@ class Lander:
             / f"feed={feed}"
             / f"date={date}"
             / f"hour={hour}"
-            / f"{stamp}_{digest[:12]}.pb.gz"
+            / f"{stamp}_{digest[:12]}{'.pb.gz' if compress else '.zip'}"
         )
         # Lossless and deterministic (mtime=0), so the bytes TfNSW sent
         # are recoverable exactly; sha256 is of the uncompressed payload.
-        packed = gzip.compress(payload, compresslevel=6, mtime=0)
+        # Static GTFS is already a zip, so it is stored as received.
+        packed = (
+            gzip.compress(payload, compresslevel=6, mtime=0)
+            if compress
+            else payload
+        )
         _atomic_write(self.data_dir / rel, packed)
         self._last_sha[feed] = digest
         self.last_stored_bytes = len(packed)

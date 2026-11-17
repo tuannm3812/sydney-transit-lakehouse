@@ -86,3 +86,19 @@ async def test_schedule_keeps_cadence_and_stops(settings: Settings) -> None:
     await asyncio.wait_for(task, timeout=1)
     calls = len(respx.calls)
     assert 5 <= calls <= 8  # ~0.32 / 0.05, no bursts
+
+
+@respx.mock
+async def test_static_gtfs_lands_zip_without_parsing(
+    settings: Settings,
+) -> None:
+    static = Feed(
+        "static_gtfs", "static_gtfs", "https://example.test/gtfs", 21600
+    )
+    body = b"PK\x03\x04 not a protobuf"
+    respx.get(static.url).mock(return_value=httpx.Response(200, content=body))
+    rec, _ = await _collector(settings).poll_once(static)
+    assert rec.outcome == "new"
+    assert rec.error is None  # no decode_error: zips are not parsed
+    assert rec.path and rec.path.endswith(".zip")
+    assert (settings.data_dir / rec.path).read_bytes() == body

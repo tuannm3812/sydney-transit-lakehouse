@@ -55,6 +55,25 @@ kind = "trip_updates"
 path = "/v2/gtfs/realtime/metro"  # unverified
 enabled = true
 
+# --- Plan gaps closed on 2026-11-17 (D-019) --------------------------------
+
+[[feeds]]
+name = "service_alerts"
+kind = "service_alerts"
+path = "/v2/gtfs/alerts/all"  # unverified
+interval_s = 60
+enabled = true
+
+# The complete static timetable (a zip, tens of MB). Polled every 6 h and
+# landed only when its hash changes, so in practice about once a day.
+[[feeds]]
+name = "static_gtfs"
+kind = "static_gtfs"
+path = "/v1/publictransport/timetables/complete/gtfs"  # unverified
+interval_s = 21600
+timeout_s = 300
+enabled = true
+
 # --- Disabled until the real quota is confirmed ---------------------------
 # Ferries and NSW TrainLink refresh every 30 s upstream, so their vehicle
 # positions are polled at 30 s rather than 15 s.
