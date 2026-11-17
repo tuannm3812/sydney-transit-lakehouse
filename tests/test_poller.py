@@ -102,3 +102,31 @@ async def test_static_gtfs_lands_zip_without_parsing(
     assert rec.error is None  # no decode_error: zips are not parsed
     assert rec.path and rec.path.endswith(".zip")
     assert (settings.data_dir / rec.path).read_bytes() == body
+
+
+def _ld(field_no: int, body: bytes) -> bytes:
+    """Encode a length-delimited protobuf field (short bodies only)."""
+    assert len(body) < 128
+    return bytes([field_no << 3 | 2, len(body)]) + body
+
+
+def test_parse_header_survives_tfnsw_string_in_trip_field_7() -> None:
+    from transit_lakehouse.collector.poller import parse_header
+
+    good = make_feed_bytes(1_763_000_000, n_entities=3)
+    # FeedEntity{id, alert{informed_entity{trip{field 7 as a string}}}}
+    trip = _ld(1, b"t1") + _ld(7, b"135N.817.160")
+    bad_entity = _ld(1, b"a1") + _ld(5, _ld(5, _ld(4, trip)))
+    payload = good + _ld(2, bad_entity)
+
+    ts, n, err = parse_header(payload)
+    assert (ts, n) == (1_763_000_000, 4)
+    assert err.startswith("partial_decode")
+
+
+def test_parse_header_reports_garbage() -> None:
+    from transit_lakehouse.collector.poller import parse_header
+
+    ts, n, err = parse_header(b"\xff\xff\xff")
+    assert (ts, n) == (None, None)
+    assert err.startswith("decode_error")

@@ -38,9 +38,59 @@ def parse_header(payload: bytes) -> tuple[int | None, int | None, str]:
     try:
         msg.ParseFromString(payload)
     except DecodeError as exc:
-        return None, None, f"decode_error: {exc}"
+        return _parse_shallow(payload, f"{exc}")
     ts = msg.header.timestamp if msg.header.HasField("timestamp") else None
     return ts, len(msg.entity), ""
+
+
+def _read_varint(buf: bytes, pos: int) -> tuple[int, int]:
+    result = shift = 0
+    while True:
+        if pos >= len(buf) or shift > 63:
+            raise DecodeError("truncated varint")
+        b = buf[pos]
+        pos += 1
+        result |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return result, pos
+        shift += 7
+
+
+def _parse_shallow(
+    payload: bytes, full_error: str
+) -> tuple[int | None, int | None, str]:
+    """Read the header and count entities without decoding entities.
+
+    TfNSW's Service Alerts put a string in TripDescriptor field 7, which
+    the official bindings define as the ``modified_trip`` message, so a
+    full parse fails on a few alerts (D-020). The FeedMessage envelope is
+    still valid, so freshness and entity counts can be recorded.
+    """
+    header = gtfs_realtime_pb2.FeedHeader()
+    entities, pos = 0, 0
+    try:
+        while pos < len(payload):
+            key, pos = _read_varint(payload, pos)
+            field_no, wire = key >> 3, key & 7
+            if wire == 2:
+                size, pos = _read_varint(payload, pos)
+                if pos + size > len(payload):
+                    raise DecodeError("truncated field")
+                if field_no == 1:
+                    header.ParseFromString(payload[pos : pos + size])
+                elif field_no == 2:
+                    entities += 1
+                pos += size
+            elif wire == 0:
+                _, pos = _read_varint(payload, pos)
+            elif wire in (1, 5):
+                pos += 8 if wire == 1 else 4
+            else:
+                raise DecodeError(f"unexpected wire type {wire}")
+    except DecodeError as exc:
+        return None, None, f"decode_error: {full_error}; shallow: {exc}"
+    ts = header.timestamp if header.HasField("timestamp") else None
+    return ts, entities, f"partial_decode: {full_error}"
 
 
 class RateLimiter:
