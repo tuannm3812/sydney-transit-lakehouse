@@ -6,6 +6,8 @@ The project runs on real live data, not a historical dump.
 
 ## Architecture
 
+![Architecture: TfNSW feeds to the live collector, a light worker building bronze and silver Iceberg tables, dbt gold tables and the products](docs/img/architecture.png)
+
 | Stage | What it does | When |
 |---|---|---|
 | **TfNSW Open Data** | Vehicle positions every 15 s, trip updates every 30 s, Service Alerts every 60 s, the static timetable checked every 6 h. GTFS-realtime protobuf, 60,000 calls a day on the API key. | Source |
