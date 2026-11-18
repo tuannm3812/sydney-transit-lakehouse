@@ -11,6 +11,7 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 1. [STATUS.md](STATUS.md): the running checklist and the current phase gate. It is the only doc rewritten in place.
 2. [docs/3_decisions.md](docs/3_decisions.md): dated `D-NNN` decisions. Read the rows before you change the feed set, cadence, partitioning or SLAs.
 3. [docs/2_architecture.md](docs/2_architecture.md): data flow and on-disk layout.
+4. [docs/7_data_model.md](docs/7_data_model.md): the data model, the layers and the storage plan (draft).
 
 ## Evidence locations
 
