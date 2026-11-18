@@ -9,6 +9,11 @@ data/
 docs/reports/*
 !docs/reports/.gitkeep
 !docs/reports/quota-24h.md
+# Curated evidence cited by docs/3_decisions.md; daily server output stays ignored.
+!docs/reports/quota-24h.json
+!docs/reports/capture-24h-20261118.txt
+!docs/reports/profile-20261118.md
+!docs/reports/offload-20261118.md
 
 # Python
 __pycache__/
