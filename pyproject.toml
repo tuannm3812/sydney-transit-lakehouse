@@ -16,8 +16,10 @@ dependencies = [
 
 [project.optional-dependencies]
 offload = ["boto3>=1.35"]  # D-026
+worker = ["pyiceberg[pyarrow,sql-sqlite]>=0.10,<1"]  # D-027
 dev = [
     "boto3>=1.35",
+    "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
     "moto[s3]>=5",
     "pytest>=8",
     "pytest-asyncio>=0.23",
@@ -30,6 +32,7 @@ transit-collector = "transit_lakehouse.collector.__main__:main"
 transit-capture-check = "transit_lakehouse.checks.capture:main"
 transit-quota-report = "transit_lakehouse.checks.quota_report:main"
 transit-offload = "transit_lakehouse.offload.__main__:main"
+transit-worker = "transit_lakehouse.worker.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transit_lakehouse"]

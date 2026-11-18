@@ -1,0 +1,426 @@
+"""Turn decoded snapshots into bronze and silver rows (D-027).
+
+Each realtime poll is a full picture of the network, and most of it
+repeats the poll before (docs/reports/profile-20261118.md). Silver keeps
+only what changed:
+
+- ``stop_prediction``: a row when a stop's predicted arrival, departure
+  or stop status differs from the same stop in the previous snapshot of
+  the feed, or the stop is new.
+- ``trip_status``: a row when a trip's status, route, vehicle or
+  trip-level delay differs from the previous snapshot, or it is new.
+- ``vehicle_position``: a row when a vehicle's own timestamp differs
+  from the previous snapshot (two polls of the same report are one
+  event), or the vehicle is new. Implausible readings are kept but
+  flagged ``quarantined`` with a reason.
+
+"Previous snapshot" is always the file landed just before, never state
+accumulated over a run. That makes every row a pure function of two
+adjacent raw files, so a replay over any batch boundaries rebuilds the
+same rows (the Phase 1 gate).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+
+from google.transit import gtfs_realtime_pb2
+
+from transit_lakehouse.worker.decode import Snapshot
+
+# Feed name prefix → mode. Names come from config/feeds.toml.
+MODES = (
+    ("buses_", "bus"),
+    ("sydneytrains_", "train"),
+    ("metro_", "metro"),
+    ("lightrail_", "lightrail"),
+    ("ferries_", "ferry"),
+    ("nswtrains_", "nswtrains"),
+)
+
+# Quarantine thresholds. Nothing in Sydney's fleet runs at 150 km/h
+# (Sydney Trains tops out near 115 km/h), and the box is NSW plus a
+# margin. A report more than 10 minutes in the future of its own poll
+# is a clock fault.
+MAX_SPEED_MPS = 150 / 3.6
+NSW_BOX = (-38.0, -28.0, 140.5, 154.0)  # min lat, max lat, min lon, max lon
+MAX_FUTURE_S = 600
+
+TU = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate
+
+
+def mode_of(feed: str) -> str:
+    for prefix, mode in MODES:
+        if feed.startswith(prefix):
+            return mode
+    return feed.split("_", 1)[0]
+
+
+def _ts(epoch: int | None) -> datetime | None:
+    return datetime.fromtimestamp(epoch, UTC) if epoch else None
+
+
+class Columns:
+    """Column-wise row buffer: one list per column, appended in order."""
+
+    def __init__(self, names: tuple[str, ...]) -> None:
+        self.names = names
+        self.data: dict[str, list] = {n: [] for n in names}
+
+    def add(self, *values) -> None:
+        for name, value in zip(self.names, values, strict=True):
+            self.data[name].append(value)
+
+    def __len__(self) -> int:
+        return len(self.data[self.names[0]])
+
+    def clear(self) -> None:
+        for values in self.data.values():
+            values.clear()
+
+
+SNAPSHOT_COLUMNS = (
+    "feed",
+    "mode",
+    "kind",
+    "source_file",
+    "sha12",
+    "fetched_at",
+    "header_ts",
+    "obs_date",
+    "stored_bytes",
+    "entities",
+    "entity_errors",
+    "decode_error",
+    "rows_emitted",
+    "ingested_at",
+)
+
+STOP_COLUMNS = (
+    "mode",
+    "feed",
+    "trip_id",
+    "start_date",
+    "route_id",
+    "direction_id",
+    "stop_sequence",
+    "stop_id",
+    "arrival_time",
+    "arrival_delay_s",
+    "departure_time",
+    "departure_delay_s",
+    "stop_status",
+    "observed_at",
+    "fetched_at",
+    "obs_date",
+    "source_file",
+)
+
+TRIP_COLUMNS = (
+    "mode",
+    "feed",
+    "trip_id",
+    "start_date",
+    "start_time",
+    "route_id",
+    "direction_id",
+    "trip_status",
+    "vehicle_id",
+    "delay_s",
+    "stop_count",
+    "observed_at",
+    "fetched_at",
+    "obs_date",
+    "source_file",
+)
+
+VEHICLE_COLUMNS = (
+    "mode",
+    "feed",
+    "vehicle_id",
+    "vehicle_label",
+    "trip_id",
+    "start_date",
+    "route_id",
+    "direction_id",
+    "latitude",
+    "longitude",
+    "bearing",
+    "speed_mps",
+    "occupancy_status",
+    "current_stop_sequence",
+    "stop_id",
+    "current_status",
+    "event_ts",
+    "observed_at",
+    "fetched_at",
+    "obs_date",
+    "quarantined",
+    "quarantine_reason",
+    "source_file",
+)
+
+
+def _enum_name(enum, value: int) -> str:
+    return enum.Name(value) if value in enum.values() else str(value)
+
+
+def _trip_key(ent: gtfs_realtime_pb2.FeedEntity, trip) -> tuple[str, str]:
+    # Added trips can arrive without a trip_id; the entity id is then the
+    # only stable handle within the feed.
+    return (trip.trip_id or f"entity:{ent.id}", trip.start_date)
+
+
+@dataclass
+class Rows:
+    """Rows emitted from one batch, per table."""
+
+    snapshots: Columns = field(
+        default_factory=lambda: Columns(SNAPSHOT_COLUMNS)
+    )
+    stops: Columns = field(default_factory=lambda: Columns(STOP_COLUMNS))
+    trips: Columns = field(default_factory=lambda: Columns(TRIP_COLUMNS))
+    vehicles: Columns = field(default_factory=lambda: Columns(VEHICLE_COLUMNS))
+
+    def by_table(self) -> dict[str, Columns]:
+        return {
+            "bronze.snapshot": self.snapshots,
+            "silver.stop_prediction": self.stops,
+            "silver.trip_status": self.trips,
+            "silver.vehicle_position": self.vehicles,
+        }
+
+    def __len__(self) -> int:
+        return sum(len(c) for c in self.by_table().values())
+
+
+class FeedDiffer:
+    """Change-only state for one feed: the previous snapshot's values."""
+
+    def __init__(self, feed: str, kind: str) -> None:
+        self.feed = feed
+        self.kind = kind
+        self.mode = mode_of(feed)
+        self.prev_stops: dict[tuple, tuple] = {}
+        self.prev_trips: dict[tuple, tuple] = {}
+        self.prev_vehicles: dict[str, tuple] = {}
+
+    def seed(self, snap: Snapshot) -> None:
+        """Load a snapshot as 'previous' without emitting rows."""
+        self.apply(snap, None, ingested_at=None)
+
+    def apply(
+        self,
+        snap: Snapshot,
+        out: Rows | None,
+        ingested_at: datetime | None,
+        emit: Callable[[str], bool] = lambda table: True,
+    ) -> None:
+        """Diff ``snap`` against the previous one and emit changed rows.
+
+        ``emit(table)`` says whether rows for a table are wanted. A table
+        that already holds this file (its watermark is past it) gets
+        none, but the state still advances.
+        """
+        if self.kind == "trip_updates":
+            emitted = self._trip_updates(snap, out, emit)
+        elif self.kind == "vehicle_positions":
+            emitted = self._vehicles(snap, out, emit)
+        else:
+            emitted = 0
+        if out is not None and emit("bronze.snapshot"):
+            out.snapshots.add(
+                self.feed,
+                self.mode,
+                self.kind,
+                snap.source_file,
+                snap.sha12,
+                snap.fetched_at,
+                _ts(snap.header_ts),
+                snap.fetched_at.date(),
+                snap.stored_bytes,
+                len(snap.entities),
+                snap.entity_errors,
+                snap.decode_error or None,
+                emitted,
+                ingested_at,
+            )
+
+    def _trip_updates(self, snap: Snapshot, out: Rows | None, emit) -> int:
+        stops: dict[tuple, tuple] = {}
+        trips: dict[tuple, tuple] = {}
+        observed = _ts(snap.header_ts)
+        obs_date = snap.fetched_at.date()
+        want_stops = out is not None and emit("silver.stop_prediction")
+        want_trips = out is not None and emit("silver.trip_status")
+        emitted = 0
+        for ent in snap.entities:
+            if not ent.HasField("trip_update"):
+                continue
+            tu = ent.trip_update
+            trip = tu.trip
+            tkey = _trip_key(ent, trip)
+            direction = (
+                trip.direction_id if trip.HasField("direction_id") else None
+            )
+            ts_observed = _ts(tu.timestamp) if tu.timestamp else observed
+            for stu in tu.stop_time_update:
+                seq = (
+                    stu.stop_sequence
+                    if stu.HasField("stop_sequence")
+                    else None
+                )
+                skey = (*tkey, seq, stu.stop_id)
+                arr = stu.arrival if stu.HasField("arrival") else None
+                dep = stu.departure if stu.HasField("departure") else None
+                value = (
+                    arr.time if arr and arr.HasField("time") else None,
+                    arr.delay if arr and arr.HasField("delay") else None,
+                    dep.time if dep and dep.HasField("time") else None,
+                    dep.delay if dep and dep.HasField("delay") else None,
+                    stu.schedule_relationship,
+                )
+                stops[skey] = value
+                if want_stops and self.prev_stops.get(skey) != value:
+                    emitted += 1
+                    out.stops.add(
+                        self.mode,
+                        self.feed,
+                        tkey[0],
+                        tkey[1] or None,
+                        trip.route_id or None,
+                        direction,
+                        seq,
+                        stu.stop_id or None,
+                        _ts(value[0]),
+                        value[1],
+                        _ts(value[2]),
+                        value[3],
+                        _enum_name(TU.ScheduleRelationship, value[4]),
+                        ts_observed,
+                        snap.fetched_at,
+                        obs_date,
+                        snap.source_file,
+                    )
+            tvalue = (
+                trip.schedule_relationship,
+                trip.route_id,
+                tu.vehicle.id,
+                tu.delay if tu.HasField("delay") else None,
+                trip.start_time,
+                len(tu.stop_time_update),
+            )
+            trips[tkey] = tvalue
+            if want_trips and self.prev_trips.get(tkey) != tvalue:
+                emitted += 1
+                out.trips.add(
+                    self.mode,
+                    self.feed,
+                    tkey[0],
+                    tkey[1] or None,
+                    trip.start_time or None,
+                    trip.route_id or None,
+                    direction,
+                    _enum_name(
+                        gtfs_realtime_pb2.TripDescriptor.ScheduleRelationship,
+                        tvalue[0],
+                    ),
+                    tvalue[2] or None,
+                    tvalue[3],
+                    tvalue[5],
+                    ts_observed,
+                    snap.fetched_at,
+                    obs_date,
+                    snap.source_file,
+                )
+        self.prev_stops, self.prev_trips = stops, trips
+        return emitted
+
+    def _vehicles(self, snap: Snapshot, out: Rows | None, emit) -> int:
+        seen: dict[str, tuple] = {}
+        observed = _ts(snap.header_ts)
+        obs_date = snap.fetched_at.date()
+        want = out is not None and emit("silver.vehicle_position")
+        emitted = 0
+        for ent in snap.entities:
+            if not ent.HasField("vehicle"):
+                continue
+            v = ent.vehicle
+            vid = v.vehicle.id or f"entity:{ent.id}"
+            pos = v.position if v.HasField("position") else None
+            lat = pos.latitude if pos else None
+            lon = pos.longitude if pos else None
+            # Without its own timestamp, a report is new when it moved.
+            value = (v.timestamp,) if v.timestamp else (None, lat, lon)
+            seen[vid] = value
+            if not want or self.prev_vehicles.get(vid) == value:
+                continue
+            speed = pos.speed if pos and pos.HasField("speed") else None
+            reason = quarantine_reason(
+                lat, lon, speed, v.timestamp, snap.fetched_at
+            )
+            trip = v.trip if v.HasField("trip") else None
+            emitted += 1
+            out.vehicles.add(
+                self.mode,
+                self.feed,
+                vid,
+                v.vehicle.label or None,
+                (trip.trip_id or None) if trip else None,
+                (trip.start_date or None) if trip else None,
+                (trip.route_id or None) if trip else None,
+                trip.direction_id
+                if trip and trip.HasField("direction_id")
+                else None,
+                lat,
+                lon,
+                pos.bearing if pos and pos.HasField("bearing") else None,
+                speed,
+                _enum_name(
+                    gtfs_realtime_pb2.VehiclePosition.OccupancyStatus,
+                    v.occupancy_status,
+                )
+                if v.HasField("occupancy_status")
+                else None,
+                v.current_stop_sequence
+                if v.HasField("current_stop_sequence")
+                else None,
+                v.stop_id or None,
+                _enum_name(
+                    gtfs_realtime_pb2.VehiclePosition.VehicleStopStatus,
+                    v.current_status,
+                )
+                if v.HasField("current_status")
+                else None,
+                _ts(v.timestamp),
+                observed,
+                snap.fetched_at,
+                obs_date,
+                reason is not None,
+                reason,
+                snap.source_file,
+            )
+        self.prev_vehicles = seen
+        return emitted
+
+
+def quarantine_reason(
+    lat: float | None,
+    lon: float | None,
+    speed: float | None,
+    event_ts: int,
+    fetched_at: datetime,
+) -> str | None:
+    """Why a position is implausible, or None when it looks fine."""
+    if lat is None or lon is None or (lat == 0 and lon == 0):
+        return "no_position"
+    lo_lat, hi_lat, lo_lon, hi_lon = NSW_BOX
+    if not (lo_lat <= lat <= hi_lat and lo_lon <= lon <= hi_lon):
+        return "outside_nsw"
+    if speed is not None and speed > MAX_SPEED_MPS:
+        return "speed_over_150kmh"
+    if event_ts and event_ts - fetched_at.timestamp() > MAX_FUTURE_S:
+        return "timestamp_in_future"
+    return None

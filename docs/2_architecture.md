@@ -30,6 +30,10 @@ The UTC partitioning is explained in D-006, the dedupe rule in D-009 and the cap
 
 See D-005. The Phase 0 gate is about the source: can we capture it at 99% within quota? Landed raw files are replayable, so Phase 1 can backfill Redpanda from them and nothing collected this week is wasted.
 
+## Phase 1: light worker (D-023, D-027)
+
+`python -m transit_lakehouse.worker run --loop 60` reads new raw files since each table's watermark, diffs each against the snapshot before it, and commits `bronze.snapshot` and the silver tables to Iceberg (SQLite catalog, warehouse under `data/lakehouse/`). The plan and work items are in docs/9_phase1.md.
+
 ## Target (Phase 1+)
 
 The collector also produces each new snapshot to Redpanda (one topic per feed kind, keyed by feed). Spark Structured Streaming decodes the protobuf into bronze Iceberg tables (vehicle positions, trip-update stop time events) on object storage, and silver/gold models are built incrementally with dbt on DuckDB. The products read gold. The details wait on the plan document (D-012).

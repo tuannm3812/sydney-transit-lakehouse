@@ -39,6 +39,15 @@
 
 - AWS setup for the raw offload (docs/8_offload.md: bucket, lifecycle rule, instance role, metadata hop limit), then approval to turn it on. Needed before about 1 Dec, when the disk fills (D-024, D-026).
 
-## Next after the gate
+## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
 
-Phase 1 adds a light worker that builds bronze/silver Iceberg tables from the landed raw snapshots, with Redpanda + Spark Structured Streaming run as an on-demand benchmark on the same feeds (D-023). Re-decide the long-term host before the AWS credits run out (D-015). See docs/4_next_steps.md.
+Built against tests and captured data while the capture run finishes; nothing is deployed to the collector host before the gate.
+
+- [x] Light worker core: bronze snapshot index, silver vehicle positions, stop predictions and trip status in Iceberg (D-027)
+- [ ] Real-data dry run on a peak and an overnight hour (needs a few hours copied from S3)
+- [ ] Replay from S3 and `verify-replay` (the Phase 1 gate)
+- [ ] Static timetable versions, Service Alerts SCD2
+- [ ] Compaction; bus stop-prediction size
+- [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
+- [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
+- [ ] Re-decide the long-term host before the AWS credits run out (D-015)
