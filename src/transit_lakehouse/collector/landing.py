@@ -119,8 +119,28 @@ class Lander:
         with path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
 
+    def last_sha(self, feed: str) -> str | None:
+        if feed not in self._last_sha:
+            self._last_sha[feed] = self._recover_last_sha(feed) or ""
+        return self._last_sha[feed] or None
+
+    def last_validators(
+        self, feed: str, names: tuple[str, ...]
+    ) -> dict[str, str]:
+        """Validator headers from the newest landed snapshot of a feed."""
+        rec = self._newest(feed, lambda r: r.get("outcome") == "new")
+        headers = (rec or {}).get("headers") or {}
+        return {k: v for k, v in headers.items() if k in names}
+
     def _recover_last_sha(self, feed: str) -> str | None:
         """Find the newest landed hash so restarts don't re-land."""
+        rec = self._newest(
+            feed, lambda r: r.get("outcome") == "new" and r.get("sha256")
+        )
+        return str(rec["sha256"]) if rec else None
+
+    def _newest(self, feed: str, match) -> dict | None:
+        """The newest manifest record of a feed that ``match`` accepts."""
         root = self.data_dir / "manifest" / f"feed={feed}"
         if not root.exists():
             return None
@@ -131,6 +151,6 @@ class Lander:
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue  # torn last line after a crash
-                if rec.get("outcome") == "new" and rec.get("sha256"):
-                    return str(rec["sha256"])
+                if match(rec):
+                    return rec
         return None
