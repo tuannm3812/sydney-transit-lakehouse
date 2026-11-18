@@ -162,3 +162,98 @@ def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
     r = evaluate_feed(_feed(), polls, START, END)
     assert r.longest_unchanged_s == 60
     assert not r.warnings
+
+
+def test_slow_feed_window_looks_back_two_intervals() -> None:
+    from transit_lakehouse.checks.capture import feed_window_start
+
+    static = Feed("static_gtfs", "static_gtfs", "https://x", 21600)
+    assert feed_window_start(static, START, END) == END - timedelta(hours=12)
+    assert feed_window_start(_feed(), START, END) == START
+
+
+def _write_at(tmp: Path, seconds: list[float], error: str | None = None):
+    lander = Lander(tmp)
+    for s in seconds:
+        ts = START + timedelta(seconds=s)
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="new",
+                latency_ms=1,
+                header_timestamp=None if error else int(ts.timestamp()) - 5,
+                error=error,
+            )
+        )
+
+
+def _eval(tmp: Path, gate: bool = False):
+    from transit_lakehouse.checks.manifest import first_seen
+
+    polls = read_polls(tmp, START, END)["buses_vehiclepos"]
+    return evaluate_feed(
+        _feed(),
+        polls,
+        START,
+        END,
+        gate,
+        active_since=first_seen(tmp, "buses_vehiclepos"),
+    )
+
+
+def test_leading_outage_after_activation_fails(tmp_path: Path) -> None:
+    # Active since before the window; down for the first 30 minutes.
+    lander = Lander(tmp_path)
+    before = START - timedelta(hours=2)
+    lander.record(
+        PollRecord(
+            feed="buses_vehiclepos",
+            fetched_at=before.isoformat(),
+            status=200,
+            outcome="new",
+            latency_ms=1,
+        )
+    )
+    _write_at(tmp_path, [1800 + 15 * i for i in range(120)])
+    r = _eval(tmp_path)
+    assert r.capture_rate == 0.5
+    assert any(f.startswith("gap 1800s") for f in r.failures)
+
+
+def test_new_feed_is_scored_from_activation(tmp_path: Path) -> None:
+    # First ever poll 30 minutes in: the earlier half is not an outage.
+    _write_at(tmp_path, [1800 + 15 * i for i in range(120)])
+    assert _eval(tmp_path).passed
+
+
+def test_gate_accepts_first_poll_a_second_late(tmp_path: Path) -> None:
+    lander = Lander(tmp_path)
+    lander.record(
+        PollRecord(
+            feed="buses_vehiclepos",
+            fetched_at=(START - timedelta(seconds=14)).isoformat(),
+            status=200,
+            outcome="new",
+            latency_ms=1,
+        )
+    )
+    _write_at(tmp_path, [1 + 15 * i for i in range(240)])
+    r = _eval(tmp_path, gate=True)
+    assert r.passed, r.failures
+
+
+def test_midwindow_gap_fails_even_with_high_capture(tmp_path: Path) -> None:
+    times = [15 * i for i in range(240) if not 100 <= i < 106]  # 90 s gap
+    _write_at(tmp_path, times)
+    r = _eval(tmp_path)
+    assert r.capture_rate > 0.97
+    assert any(f.startswith("gap 105s") for f in r.failures)
+
+
+def test_undecodable_window_fails(tmp_path: Path) -> None:
+    _write_at(tmp_path, [15 * i for i in range(240)], error="decode_error: x")
+    r = _eval(tmp_path)
+    assert "freshness unknown: no feed timestamps" in r.failures
+    assert any(f.startswith("undecodable payloads") for f in r.failures)

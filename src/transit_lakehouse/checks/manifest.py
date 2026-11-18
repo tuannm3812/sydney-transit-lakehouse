@@ -95,6 +95,23 @@ def read_polls(
     return out
 
 
+def first_seen(data_dir: Path, feed: str) -> datetime | None:
+    """When the collector first polled a feed (its activation time).
+
+    Lets a check tell "the feed did not exist yet" from "the feed was
+    down": only the former may shorten the denominator.
+    """
+    root = data_dir / "manifest" / f"feed={feed}"
+    files = sorted(root.glob("date=*/hour=*.jsonl")) if root.exists() else []
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                return datetime.fromisoformat(json.loads(line)["fetched_at"])
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return None
+
+
 def percentile(values: list[float], q: float) -> float | None:
     """Nearest-rank percentile; None for an empty list."""
     if not values:
