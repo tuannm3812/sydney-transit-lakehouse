@@ -1,0 +1,36 @@
+{
+  "window_start": "2026-11-17T07:12:52.075441+00:00",
+  "window_end": "2026-11-18T07:12:52.075441+00:00",
+  "observed_hours": 23.99774151861111,
+  "generated": "2026-11-18T07:12:52+00:00",
+  "daily_quota": 60000,
+  "total_requests": 27339,
+  "requests_per_day": 27341.572934734002,
+  "limit_hits": 0,
+  "outcomes": {"new": 26820, "unchanged": 519},
+  "received_per_day": 15757299500.319193,
+  "downloaded_per_day": 16857802904.42155,
+  "stored_per_day": 4942126142.829797,
+  "feeds": [
+    {"feed": "buses_tripupdates", "requests": 2881, "per_day": 2881.271137385005, "new": 2881, "unchanged": 0, "limit_hits": 0, "other_errors": 0, "size_p50": 4690349.0, "size_p95": 8922387.0, "size_max": 9238316.0, "received_per_day": 11848918361.399904, "downloaded_per_day": 11848918361.399904, "stored_per_day": 3376225101.2314925},
+    {"feed": "buses_vehiclepos", "requests": 5760, "per_day": 5760.542086545516, "new": 5760, "unchanged": 0, "limit_hits": 0, "other_errors": 0, "size_p50": 288310.0, "size_p95": 697685.0, "size_max": 747248.0, "received_per_day": 1583630053.9584897, "downloaded_per_day": 1583630053.9584897, "stored_per_day": 400568906.89254946},
+    {"feed": "metro_tripupdates", "requests": 2881, "per_day": 2881.271137385005, "new": 2881, "unchanged": 0, "limit_hits": 0, "other_errors": 0, "size_p50": 78918.0, "size_p95": 103480.0, "size_max": 106206.0, "received_per_day": 180468832.7291664, "downloaded_per_day": 180468832.7291664, "stored_per_day": 52184101.70093699},
+    {"feed": "metro_vehiclepos", "requests": 5760, "per_day": 5760.542086545516, "new": 5759, "unchanged": 1, "limit_hits": 0, "other_errors": 0, "size_p50": 9697.0, "size_p95": 12424.0, "size_max": 12648.0, "received_per_day": 43424027.34823319, "downloaded_per_day": 43428576.776349805, "stored_per_day": 9225096.112828398},
+    {"feed": "service_alerts", "requests": 1410, "per_day": 1410.1326982689543, "new": 896, "unchanged": 514, "limit_hits": 0, "other_errors": 0, "size_p50": 466975.0, "size_p95": 478522.0, "size_max": 480491.0, "received_per_day": 419974654.0391647, "downloaded_per_day": 660978448.3134989, "stored_per_day": 74558544.21185355},
+    {"feed": "static_gtfs", "requests": 6, "per_day": 6.000564673484912, "new": 3, "unchanged": 3, "limit_hits": 0, "other_errors": 0, "size_p50": 286251913.0, "size_p95": 286698621.0, "size_max": 286698621.0, "received_per_day": 859723814.9264832, "downloaded_per_day": 1719000879.8122725, "stored_per_day": 859723814.9264832},
+    {"feed": "sydneytrains_tripupdates", "requests": 2881, "per_day": 2881.271137385005, "new": 2880, "unchanged": 1, "limit_hits": 0, "other_errors": 0, "size_p50": 218943.0, "size_p95": 274773.0, "size_max": 287578.0, "received_per_day": 558312112.0630952, "downloaded_per_day": 558530107.5772125, "stored_per_day": 85096456.86517043},
+    {"feed": "sydneytrains_vehiclepos", "requests": 5760, "per_day": 5760.542086545516, "new": 5760, "unchanged": 0, "limit_hits": 0, "other_errors": 0, "size_p50": 47441.0, "size_p95": 60105.0, "size_max": 61507.0, "received_per_day": 262847643.85465664, "downloaded_per_day": 262847643.85465664, "stored_per_day": 84544120.88848194}
+  ],
+  "headers": {
+    "etag": ["\"1794937513.432-286251913-1981158128\""],
+    "last-modified": ["Tue, 17 Nov 2026 17:45:13 GMT", "Wed, 18 Nov 2026 04:06:19 GMT", "Wed, 18 Nov 2026 04:06:21 GMT", "Wed, 18 Nov 2026 04:06:28 GMT", "Wed, 18 Nov 2026 04:06:30 GMT"],
+    "x-amz-cf-pop": ["CGK60-P1", "SYD3-P1", "SYD3-P3", "SYD62-P1", "SYD62-P2"],
+    "x-cache": ["Hit from cloudfront", "Miss from cloudfront"],
+    "x-cacheable": ["NO - TTL = 0"],
+    "x-content-type-options": ["nosniff", "nosniff, nosniff"],
+    "x-frame-options": ["DENY"],
+    "x-ttl": ["0.000"],
+    "x-xss-protection": ["1; mode=block"]
+  },
+  "disk": {"total": 82086711296, "used": 11049570304, "free": 71020363776}
+}
