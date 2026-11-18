@@ -21,5 +21,5 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 ## Open risks
 
 - The source plan was received and reconciled on 2026-11-17 (D-019).
-- The 6 original feed paths were verified live on 2026-11-16 (D-013). Service Alerts and static GTFS were added on 2026-11-17 (D-019). Light rail, ferry and NSW TrainLink paths are still unverified. The gateway 429s on bursts, so keep MAX_RPS at 1.
+- The 6 original feed paths were verified live on 2026-11-16 (D-013). Service Alerts and static GTFS were added on 2026-11-17 (D-019). Ferries (`/v1`) and Inner West light rail (`/v2`) were verified live on 2026-11-18 (D-025); NSW TrainLink and the other light rail lines are still unverified. The gateway 429s on bursts, so keep MAX_RPS at 1.
 - The API key is a secret. It lives in `.env` only. Never print it, log it or paste it in chat.

@@ -24,7 +24,7 @@
 - [x] Collector running on the always-on host
 - [x] Static GTFS timetable and Service Alerts collected (D-019)
 - [x] 24-hour report committed to `docs/reports/quota-24h.md`; quota and volume confirmed in D-024
-- [ ] Decide whether to enable the plan's remaining feeds (after the 24 h report)
+- [x] Light rail (Inner West) and ferries enabled after the 24 h report (D-025); 12 feeds, 70% of quota
 - [ ] Day 1 to day 7 capture ≥ 99% (record each day below)
 - [ ] Gate passed and recorded as a decision
 
@@ -37,7 +37,6 @@
 
 ## Blocked on Mike
 
-- Whether to enable more feeds (light rail, ferries) now that the quota is confirmed.
 - Approval to offload raw snapshots to object storage before about 1 Dec, when the disk fills (D-024).
 
 ## Next after the gate
