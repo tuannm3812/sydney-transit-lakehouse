@@ -273,6 +273,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="Write markdown here.")
     parser.add_argument("--json", type=Path, help="Write the stats here.")
     parser.add_argument(
+        "--previous",
+        type=Path,
+        help="Stats JSON from an earlier run, for change columns.",
+    )
+    parser.add_argument(
         "--html", type=Path, help="Write the styled HTML report here."
     )
     parser.add_argument("--probe", action="store_true")
@@ -292,6 +297,9 @@ def main(argv: list[str] | None = None) -> int:
         read_polls(args.data_dir, start, end), start, end, args.daily_quota
     )
     stats["disk"] = disk_usage(args.data_dir)
+    if args.previous and args.previous.exists():
+        stats["previous"] = json.loads(args.previous.read_text("utf-8"))
+        stats["previous"].pop("previous", None)  # keep one level only
     report = render_markdown(stats)
     outputs = {
         args.out: report,

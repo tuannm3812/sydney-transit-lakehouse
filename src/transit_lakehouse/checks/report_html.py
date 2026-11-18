@@ -270,6 +270,7 @@ tfoot td{font-weight:700;color:var(--ink);background:var(--card);
 .pill.bad{color:var(--bad)}
 .pill .ic{width:16px;height:16px;vertical-align:-3px}
 .muted{color:var(--muted)}
+.delta{color:var(--ink);font-weight:700}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
@@ -466,12 +467,37 @@ def _runway(st: dict, days_left: float) -> str:
     )
 
 
+def _prev(st: dict, feed: str | None, key: str) -> float | None:
+    """The same figure from the previous report, if one was supplied."""
+    prev = st.get("previous")
+    if not prev:
+        return None
+    if feed is None:
+        return prev.get(key)
+    match = next((f for f in prev["feeds"] if f["feed"] == feed), None)
+    return match.get(key) if match else None
+
+
+def _delta(cur: float, prev: float | None) -> str:
+    """Change against the previous report, as an arrow and a percent."""
+    if prev is None:
+        return '<td class="muted">new</td>'
+    if not prev:
+        return '<td class="muted">–</td>'
+    change = cur / prev - 1
+    if abs(change) < 0.01:
+        return '<td class="muted">≈ 0%</td>'
+    arrow = "▲" if change > 0 else "▼"
+    return f'<td class="delta">{arrow} {abs(change):.0%}</td>'
+
+
 def _requests_table(st: dict, assets: Assets) -> str:
     quota = st["daily_quota"]
     feeds = sorted(
         st["feeds"], key=lambda f: (_mode_rank(f["feed"]), -f["per_day"])
     )
     top = max((f["per_day"] for f in feeds), default=1) or 1
+    has_prev = bool(st.get("previous"))
     rows = []
     for f in feeds:
         mode = describe(f["feed"])[0]
@@ -483,7 +509,12 @@ def _requests_table(st: dict, assets: Assets) -> str:
             f"<td>{f['requests']:,}</td>"
             f'<td class="bar" style="--w:{f["per_day"] / top * 100:.0f}%;'
             f'--c:{_colour(mode)}">{f["per_day"]:,.0f}</td>'
-            f"<td>{f['per_day'] / quota:.1%}</td>"
+            + (
+                _delta(f["per_day"], _prev(st, f["feed"], "per_day"))
+                if has_prev
+                else ""
+            )
+            + f"<td>{f['per_day'] / quota:.1%}</td>"
             f"<td>{f['new']:,}</td>"
             f"<td>{f['unchanged']:,} "
             f'<span class="muted">({unchanged:.0%})</span></td>'
@@ -493,12 +524,19 @@ def _requests_table(st: dict, assets: Assets) -> str:
     tot = st["requests_per_day"]
     return (
         '<div class="table"><table><thead><tr><th>Feed</th>'
-        "<th>Requests</th><th>Per day</th><th>Share of quota</th>"
+        "<th>Requests</th><th>Per day</th>"
+        + ("<th>vs previous</th>" if has_prev else "")
+        + "<th>Share of quota</th>"
         "<th>New</th><th>Unchanged</th><th>Limit hits</th>"
         "<th>Other errors</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody><tfoot><tr><td>All feeds</td>"
         f"<td>{st['total_requests']:,}</td><td>{tot:,.0f}</td>"
-        f"<td>{tot / quota:.1%}</td>"
+        + (
+            _delta(tot, _prev(st, None, "requests_per_day"))
+            if has_prev
+            else ""
+        )
+        + f"<td>{tot / quota:.1%}</td>"
         f"<td>{sum(f['new'] for f in feeds):,}</td>"
         f"<td>{sum(f['unchanged'] for f in feeds):,}</td>"
         f"<td>{_pill_count(st['limit_hits'])}</td>"
@@ -513,6 +551,7 @@ def _requests_table(st: dict, assets: Assets) -> str:
 def _size_table(st: dict, assets: Assets) -> str:
     feeds = sorted(st["feeds"], key=lambda f: -f["stored_per_day"])
     total = st["stored_per_day"] or 1
+    has_prev = bool(st.get("previous"))
     rows = []
     for f in feeds:
         mode = describe(f["feed"])[0]
@@ -531,20 +570,36 @@ def _size_table(st: dict, assets: Assets) -> str:
             f"<td>{ratio:.1f}×</td>"
             f'<td class="bar" style="--w:{share * 100:.0f}%;'
             f'--c:{_colour(mode)}">{_size(f["stored_per_day"])}</td>'
-            f'<td class="heat" style="--h:{share:.2f}">{share:.0%}</td>'
+            + (
+                _delta(
+                    f["stored_per_day"],
+                    _prev(st, f["feed"], "stored_per_day"),
+                )
+                if has_prev
+                else ""
+            )
+            + f'<td class="heat" style="--h:{share:.2f}">{share:.0%}</td>'
             f"<td>{_size(f['stored_per_day'] * 30)}</td></tr>"
         )
     recv, stored = st["received_per_day"], st["stored_per_day"]
     return (
         '<div class="table"><table><thead><tr><th>Feed</th><th>p50 size'
         "</th><th>p95 size</th><th>Max size</th><th>Received/day</th>"
-        "<th>Gzip</th><th>On disk/day</th><th>Share of disk</th>"
+        "<th>Gzip</th><th>On disk/day</th>"
+        + ("<th>vs previous</th>" if has_prev else "")
+        + "<th>Share of disk</th>"
         "<th>On disk/30 days</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody><tfoot><tr><td>All feeds</td>"
         "<td></td><td></td><td></td>"
         f"<td>{_size(recv)}</td>"
         f"<td>{recv / stored if stored else 0:.1f}×</td>"
-        f"<td>{_size(stored)}</td><td>100%</td>"
+        f"<td>{_size(stored)}</td>"
+        + (
+            _delta(stored, _prev(st, None, "stored_per_day"))
+            if has_prev
+            else ""
+        )
+        + "<td>100%</td>"
         f"<td>{_size(stored * 30)}</td></tr></tfoot>"
         "<caption>Sizes are per snapshot as received. On disk counts only "
         "snapshots that changed, after gzip. The timetable is already a "

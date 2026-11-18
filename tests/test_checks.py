@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -178,3 +179,17 @@ def test_html_report_renders_with_disk_runway(tmp_path: Path) -> None:
     assert "5,760" in page
     assert describe("service_alerts") == ("Network-wide", "alerts")
     assert describe("sydneytrains_tripupdates") == ("Trains", "trip updates")
+
+
+def test_html_report_shows_change_against_previous(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    prev = json.loads(json.dumps(st))
+    prev["feeds"][0]["per_day"] = st["feeds"][0]["per_day"] / 2
+    st["previous"] = prev
+    page = render_html(st)
+    assert "vs previous" in page
+    assert "▲ 100%" in page
