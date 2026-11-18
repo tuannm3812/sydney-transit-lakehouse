@@ -24,7 +24,7 @@ Everything is in **Asia Pacific (Sydney) ap-southeast-2**.
    - Bucket versioning: off.
    - Default encryption: SSE-S3 (the default).
 2. **Add a lifecycle rule.** Bucket → Management → Create lifecycle rule.
-   - Name `archive-after-30d`, applied to all objects.
+   - Name `archive-after-30d`. Scope: "Limit the scope using filters", **Prefix `raw/`** (no tags, no size filter). Manifests stay in S3 Standard: they are small and read often.
    - Transition current versions to **Glacier Instant Retrieval after 30 days**.
    - Also tick "Delete expired object delete markers or incomplete multipart uploads", with incomplete uploads deleted after 1 day.
 3. **Create the instance role.** IAM → Roles → Create role → Trusted entity "AWS service", use case **EC2** → skip the managed policies → name it `transit-collector-offload` → create. Then open the role → Add permissions → Create inline policy → JSON, and paste the policy below with your bucket name in both places. There is deliberately no delete permission: the server can add data but cannot remove it from S3.
