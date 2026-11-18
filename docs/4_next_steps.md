@@ -8,4 +8,4 @@
 4. After 24 h: run `checks quota --window 24h --out docs/reports/quota-24h.md`, commit the report, and update D-004 with the confirmed figures and real snapshot sizes. If the headroom allows, enable light rail and ferries.
 5. Days 1–7: run `checks capture --window 24h` daily and log it in STATUS.md. On day 7 run `checks capture --window 7d --gate`.
 6. Write the first cost and scale note once real snapshot sizes are known (GB/day raw, R2 cost, what breaks at 10x).
-7. Phase 1 (after the gate): Redpanda in Compose, the collector producing to it, a backfill from raw files, and Spark Structured Streaming into bronze Iceberg.
+7. Phase 1 (after the gate, D-023): a light worker that turns raw snapshots into bronze and silver Iceberg tables, then a Redpanda + Spark Structured Streaming benchmark on the same feeds, replayed from raw, with latency and cost measured against the light worker.

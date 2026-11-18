@@ -40,4 +40,4 @@
 
 ## Next after the gate
 
-Phase 1 replays the landed raw snapshots into Redpanda and switches the collector to produce to it as well, then Spark Structured Streaming writes bronze Iceberg tables. Re-decide the Phase 1 host before the AWS credits run out (D-015). See docs/4_next_steps.md.
+Phase 1 adds a light worker that builds bronze/silver Iceberg tables from the landed raw snapshots, with Redpanda + Spark Structured Streaming run as an on-demand benchmark on the same feeds (D-023). Re-decide the long-term host before the AWS credits run out (D-015). See docs/4_next_steps.md.
