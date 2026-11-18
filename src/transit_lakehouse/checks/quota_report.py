@@ -37,6 +37,8 @@ from transit_lakehouse.collector.config import (
 )
 
 PROBE_SPACING_S = 1.5
+# Per-request IDs: unique on every response, so listing them is noise.
+NOISY_HEADERS = frozenset({"x-amz-cf-id", "x-varnish", "x-request-id"})
 LIMIT_REASONS = ("rate_limited", "quota_exhausted", "http_503", "http_429")
 
 
@@ -82,7 +84,8 @@ def compute_stats(
         ratio = sum(p.stored_bytes for p in gz) / gz_in if gz_in else 1.0
         for p in items:
             for k, v in p.headers.items():
-                headers.setdefault(k, set()).add(v)
+                if k not in NOISY_HEADERS:
+                    headers.setdefault(k, set()).add(v)
         feeds.append(
             {
                 "feed": feed,
