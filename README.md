@@ -68,6 +68,7 @@ Every poll attempt, including failures and unchanged snapshots, is written as a 
 
 - `src/transit_lakehouse/collector/`: config, backoff policy, poller and landing
 - `src/transit_lakehouse/checks/`: capture/freshness SLA check and the quota report
+- `src/transit_lakehouse/offload/`: hourly upload of closed raw hours to S3 and pruning of verified local copies (D-026)
 - `config/feeds.toml`: which feeds are polled and how often
 - `docs/`: brief, architecture, decisions log, next steps, API token setup
 - `STATUS.md`: the running checklist

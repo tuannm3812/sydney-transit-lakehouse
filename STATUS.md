@@ -37,7 +37,7 @@
 
 ## Blocked on Mike
 
-- Approval to offload raw snapshots to object storage before about 1 Dec, when the disk fills (D-024).
+- AWS setup for the raw offload (docs/8_offload.md: bucket, lifecycle rule, instance role, metadata hop limit), then approval to turn it on. Needed before about 1 Dec, when the disk fills (D-024, D-026).
 
 ## Next after the gate
 

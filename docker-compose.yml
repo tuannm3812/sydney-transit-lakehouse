@@ -35,3 +35,17 @@ services:
       - ./data:/data:ro
       - ./config:/app/config:ro
       - ./docs/reports:/app/docs/reports
+
+  offload:
+    # Ships closed hours to S3 and prunes verified local copies (D-026).
+    # No env_file: this job needs no TfNSW key. Credentials come from the
+    # EC2 instance role (docs/8_offload.md).
+    build: .
+    profiles: ["tools"]
+    entrypoint: ["python", "-m", "transit_lakehouse.offload"]
+    environment:
+      DATA_DIR: /data
+      OFFLOAD_BUCKET: ${OFFLOAD_BUCKET:-}
+      AWS_REGION: ap-southeast-2
+    volumes:
+      - ./data:/data
