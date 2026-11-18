@@ -40,8 +40,16 @@ if ! grep -qs '^TFNSW_API_KEY=.\{20,\}' .env; then
   read -r -s -p "Paste key and press Enter: " KEY </dev/tty
   echo
   umask 077
-  sed "s|^TFNSW_API_KEY=.*|TFNSW_API_KEY=${KEY}|" .env.example > .env
-  unset KEY
+  # Bash builtins only (read/printf), so the key never appears in any
+  # process's argument list (ps, /proc/*/cmdline).
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line == TFNSW_API_KEY=* ]]; then
+      printf 'TFNSW_API_KEY=%s\n' "$KEY"
+    else
+      printf '%s\n' "$line"
+    fi
+  done < .env.example > .env
+  unset KEY line
   chmod 600 .env
 fi
 

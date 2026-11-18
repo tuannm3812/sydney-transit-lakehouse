@@ -83,6 +83,9 @@ def classify(
     now = now or datetime.now(UTC)
     if status == 200:
         return Verdict(ok=True, reason="ok")
+    if status == 304:
+        # Answer to a conditional request: the file has not changed.
+        return Verdict(ok=True, reason="not_modified")
 
     detail = headers.get("x-error-detail", "").lower()
     if status == 403 and "quota" in detail:
