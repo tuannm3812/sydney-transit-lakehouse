@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         for f in feeds
     ]
 
-    print(f"Capture check {start:%Y-%m-%d %H:%M} to {end:%H:%M} UTC")
+    print(f"Capture check {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC")
     print(
         f"{'feed':<32}{'capture':>9}{'ok/exp':>14}{'p50':>6}"
         f"{'p95':>6}{'gap':>7}  status"
