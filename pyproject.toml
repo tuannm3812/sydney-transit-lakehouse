@@ -15,7 +15,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+offload = ["boto3>=1.35"]  # D-026
 dev = [
+    "boto3>=1.35",
+    "moto[s3]>=5",
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
@@ -26,6 +29,7 @@ dev = [
 transit-collector = "transit_lakehouse.collector.__main__:main"
 transit-capture-check = "transit_lakehouse.checks.capture:main"
 transit-quota-report = "transit_lakehouse.checks.quota_report:main"
+transit-offload = "transit_lakehouse.offload.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transit_lakehouse"]
