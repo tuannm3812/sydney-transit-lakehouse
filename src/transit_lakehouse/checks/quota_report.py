@@ -98,7 +98,11 @@ def compute_stats(
                 "size_p50": percentile(sizes, 0.5) if sizes else None,
                 "size_p95": percentile(sizes, 0.95) if sizes else None,
                 "size_max": max(sizes) if sizes else None,
+                # Raw bytes of snapshots we kept (the gzip ratio's base).
                 "received_per_day": landed / days,
+                # Everything that crossed the network, repeats included.
+                "downloaded_per_day": sum(p.size_bytes for p in items if p.ok)
+                / days,
                 "stored_per_day": landed * ratio / days,
             }
         )
@@ -114,6 +118,7 @@ def compute_stats(
         "limit_hits": sum(f["limit_hits"] for f in feeds),
         "outcomes": dict(all_reasons.most_common()),
         "received_per_day": sum(f["received_per_day"] for f in feeds),
+        "downloaded_per_day": sum(f["downloaded_per_day"] for f in feeds),
         "stored_per_day": sum(f["stored_per_day"] for f in feeds),
         "feeds": feeds,
         "headers": {k: sorted(v)[:5] for k, v in sorted(headers.items())},
@@ -204,7 +209,8 @@ def render_markdown(st: dict) -> str:
     stored = st["stored_per_day"]
     lines += [
         "",
-        f"Received {_mb(st['received_per_day'])}/day. On disk after gzip: "
+        f"Downloaded {_mb(st['downloaded_per_day'])}/day, of which "
+        f"{_mb(st['received_per_day'])}/day was new. On disk after gzip: "
         f"**{_mb(stored)}/day, {stored * 30 / 1e9:,.1f} GB per 30 days** "
         "before compaction into Iceberg.",
         "",

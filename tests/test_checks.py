@@ -193,3 +193,19 @@ def test_html_report_shows_change_against_previous(tmp_path: Path) -> None:
     page = render_html(st)
     assert "vs previous" in page
     assert "▲ 100%" in page
+
+
+def test_html_report_survives_no_data_and_full_disk(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    empty = compute_stats({}, START, END, 60_000)
+    empty["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    assert "<title>" in render_html(empty)
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    st["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    page = render_html(st)
+    assert "0 days" in page
+    assert st["downloaded_per_day"] >= st["received_per_day"]

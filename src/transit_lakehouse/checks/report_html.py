@@ -566,7 +566,7 @@ def _size_table(st: dict, assets: Assets) -> str:
             f"<td>{_feed_cell(f['feed'], assets)}</td>"
             f"<td>{_size(f['size_p50'])}</td><td>{_size(f['size_p95'])}</td>"
             f"<td>{_size(f['size_max'])}</td>"
-            f"<td>{_size(f['received_per_day'])}</td>"
+            f"<td>{_size(f.get('downloaded_per_day'))}</td>"
             f"<td>{ratio:.1f}×</td>"
             f'<td class="bar" style="--w:{share * 100:.0f}%;'
             f'--c:{_colour(mode)}">{_size(f["stored_per_day"])}</td>'
@@ -582,16 +582,17 @@ def _size_table(st: dict, assets: Assets) -> str:
             f"<td>{_size(f['stored_per_day'] * 30)}</td></tr>"
         )
     recv, stored = st["received_per_day"], st["stored_per_day"]
+    down = st.get("downloaded_per_day")
     return (
         '<div class="table"><table><thead><tr><th>Feed</th><th>p50 size'
-        "</th><th>p95 size</th><th>Max size</th><th>Received/day</th>"
+        "</th><th>p95 size</th><th>Max size</th><th>Downloaded/day</th>"
         "<th>Gzip</th><th>On disk/day</th>"
         + ("<th>vs previous</th>" if has_prev else "")
         + "<th>Share of disk</th>"
         "<th>On disk/30 days</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody><tfoot><tr><td>All feeds</td>"
         "<td></td><td></td><td></td>"
-        f"<td>{_size(recv)}</td>"
+        f"<td>{_size(down)}</td>"
         f"<td>{recv / stored if stored else 0:.1f}×</td>"
         f"<td>{_size(stored)}</td>"
         + (
@@ -601,9 +602,11 @@ def _size_table(st: dict, assets: Assets) -> str:
         )
         + "<td>100%</td>"
         f"<td>{_size(stored * 30)}</td></tr></tfoot>"
-        "<caption>Sizes are per snapshot as received. On disk counts only "
-        "snapshots that changed, after gzip. The timetable is already a "
-        "zip, so it is stored as received.</caption></table></div>"
+        "<caption>Sizes are per snapshot as received. Downloaded counts "
+        "every successful poll, repeats included. On disk counts only "
+        "snapshots that changed, after gzip; the gzip ratio compares those "
+        "two. The timetable is already a zip, so it is stored as received."
+        "</caption></table></div>"
     )
 
 
@@ -645,7 +648,9 @@ def render_html(
     by_disk = sorted(feeds, key=lambda f: -f["stored_per_day"])
     disk = st.get("disk")
     days_left = disk["free"] / stored if disk and stored else None
-    full_day = gen_syd + timedelta(days=days_left) if days_left else None
+    full_day = (
+        gen_syd + timedelta(days=days_left) if days_left is not None else None
+    )
 
     def name(f: dict) -> str:
         return escape(" ".join(describe(f["feed"])))
@@ -722,10 +727,13 @@ def render_html(
         "day under the collector's 80% budget.",
         f"{hits:,} rate or quota rejections and {errors:,} other errors "
         f"across {st['total_requests']:,} requests in {hours:.1f} hours.",
-        f"The busiest feed is {name(by_calls[0])} at "
-        f"{by_calls[0]['per_day']:,.0f} a day "
-        f"({by_calls[0]['per_day'] / quota:.0%} of quota).",
     ]
+    if by_calls:
+        q_points.append(
+            f"The busiest feed is {name(by_calls[0])} at "
+            f"{by_calls[0]['per_day']:,.0f} a day "
+            f"({by_calls[0]['per_day'] / quota:.0%} of quota)."
+        )
     if unchanged_top and unchanged_top["unchanged"]:
         u = unchanged_top
         q_points.append(
