@@ -40,6 +40,15 @@ def main(argv: list[str] | None = None) -> int:
     s3 = boto3.client(
         "s3", region_name=os.environ.get("AWS_REGION", "ap-southeast-2")
     )
+    try:  # fail early, and let --dry-run prove the role reaches S3
+        s3.head_bucket(Bucket=args.bucket)
+    except Exception as exc:  # noqa: BLE001 - report and stop
+        print(
+            f"cannot reach bucket {args.bucket}: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"bucket {args.bucket} reachable")
     now = datetime.now(UTC)
     if args.command == "upload":
         res = core.upload(
