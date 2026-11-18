@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 # Headers worth keeping in the manifest: they are how the 24-hour report
 # discovers the real quota behaviour, since TfNSW exposes no usage API.
 KEPT_HEADER_HINTS = ("limit", "quota", "retry", "error", "x-")
+# Validators for conditional requests on large static files (D-021).
+VALIDATOR_HEADERS = ("etag", "last-modified")
 
 
 def keep_headers(headers: httpx.Headers) -> dict[str, str]:
@@ -29,6 +31,7 @@ def keep_headers(headers: httpx.Headers) -> dict[str, str]:
         k.lower(): v
         for k, v in headers.items()
         if any(h in k.lower() for h in KEPT_HEADER_HINTS)
+        or k.lower() in VALIDATOR_HEADERS
     }
 
 
@@ -124,6 +127,7 @@ class Collector:
         self.limiter = RateLimiter(settings.max_rps)
         self.clock = clock
         self._failures: dict[str, int] = {}
+        self._validators: dict[str, dict[str, str]] = {}
         self._client = client or httpx.AsyncClient(
             timeout=settings.timeout_s,
             headers={
@@ -146,7 +150,11 @@ class Collector:
         payload = b""
         error: str | None = None
         try:
-            resp = await self._client.get(feed.url, timeout=feed.timeout_s)
+            resp = await self._client.get(
+                feed.url,
+                timeout=feed.timeout_s,
+                headers=self._conditional_headers(feed),
+            )
             status = resp.status_code
             headers = keep_headers(resp.headers)
             payload = resp.content
@@ -182,6 +190,18 @@ class Collector:
             )
             return rec, verdict.backoff_s
 
+        if status == 304:
+            # Not downloaded at all; the last landed snapshot stands.
+            rec.outcome = "unchanged"
+            rec.sha256 = self.lander.last_sha(feed.name)
+            self.lander.record(rec)
+            self._heartbeat()
+            return rec, 0.0
+        if not feed.is_realtime:
+            self._validators[feed.name] = {
+                k: v for k, v in headers.items() if k in VALIDATOR_HEADERS
+            }
+
         digest = sha256_hex(payload)
         if feed.is_realtime:
             header_ts, n_entities, parse_err = parse_header(payload)
@@ -204,6 +224,28 @@ class Collector:
         self.lander.record(rec)
         self._heartbeat()
         return rec, 0.0
+
+    def _conditional_headers(self, feed: Feed) -> dict[str, str]:
+        """If-None-Match / If-Modified-Since for static files.
+
+        Realtime feeds change every few seconds, so validators would only
+        add bytes. The static timetable is ~290 MB and changes about daily,
+        so asking "changed since?" avoids re-downloading it, including
+        after a collector restart (validators come back from the manifest).
+        """
+        if feed.is_realtime:
+            return {}
+        if feed.name not in self._validators:
+            self._validators[feed.name] = self.lander.last_validators(
+                feed.name, VALIDATOR_HEADERS
+            )
+        v = self._validators[feed.name]
+        out = {}
+        if v.get("etag"):
+            out["If-None-Match"] = v["etag"]
+        if v.get("last-modified"):
+            out["If-Modified-Since"] = v["last-modified"]
+        return out
 
     async def run_feed(self, feed: Feed, offset_s: float) -> None:
         """Poll one feed forever on a drift-free schedule."""
