@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -162,6 +163,52 @@ def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
     r = evaluate_feed(_feed(), polls, START, END)
     assert r.longest_unchanged_s == 60
     assert not r.warnings
+
+
+def test_html_report_renders_with_disk_runway(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import describe, render_html
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    st["disk"] = {"total": 80e9, "used": 10e9, "free": 70e9}
+    page = render_html(st)
+    assert "<title>Quota and Volume Report</title>" in page
+    assert "Bus positions" in page
+    assert "Disk runway" in page
+    assert "5,760" in page
+    assert describe("service_alerts") == ("Network-wide", "alerts")
+    assert describe("sydneytrains_tripupdates") == ("Trains", "trip updates")
+
+
+def test_html_report_shows_change_against_previous(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    prev = json.loads(json.dumps(st))
+    prev["feeds"][0]["per_day"] = st["feeds"][0]["per_day"] / 2
+    st["previous"] = prev
+    page = render_html(st)
+    assert "vs previous" in page
+    assert "▲ 100%" in page
+
+
+def test_html_report_survives_no_data_and_full_disk(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    empty = compute_stats({}, START, END, 60_000)
+    empty["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    assert "<title>" in render_html(empty)
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    st["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    page = render_html(st)
+    assert "0 days" in page
+    assert st["downloaded_per_day"] >= st["received_per_day"]
 
 
 def test_slow_feed_window_looks_back_two_intervals() -> None:
