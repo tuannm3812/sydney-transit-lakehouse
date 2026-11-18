@@ -82,26 +82,26 @@ enabled = true
 name = "lightrail_innerwest_vehiclepos"
 kind = "vehicle_positions"
 path = "/v1/gtfs/vehiclepos/lightrail/innerwest"  # unverified
-enabled = false
+enabled = true  # D-025
 
 [[feeds]]
 name = "lightrail_innerwest_tripupdates"
 kind = "trip_updates"
 path = "/v1/gtfs/realtime/lightrail/innerwest"  # unverified
-enabled = false
+enabled = true  # D-025
 
 [[feeds]]
 name = "ferries_vehiclepos"
 kind = "vehicle_positions"
 path = "/v1/gtfs/vehiclepos/ferries/sydneyferries"  # unverified
 interval_s = 30
-enabled = false
+enabled = true  # D-025
 
 [[feeds]]
 name = "ferries_tripupdates"
 kind = "trip_updates"
 path = "/v1/gtfs/realtime/ferries/sydneyferries"  # unverified
-enabled = false
+enabled = true  # D-025
 
 [[feeds]]
 name = "nswtrains_vehiclepos"
