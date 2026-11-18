@@ -1,18 +1,25 @@
-"""Dispatch: ``python -m transit_lakehouse.checks capture|quota ...``."""
+"""Dispatch: ``python -m transit_lakehouse.checks <command> ...``."""
 
 from __future__ import annotations
 
 import sys
 
-from transit_lakehouse.checks import capture, quota_report
+from transit_lakehouse.checks import capture, profile, quota_report
 
-COMMANDS = {"capture": capture.main, "quota": quota_report.main}
+COMMANDS = {
+    "capture": capture.main,
+    "quota": quota_report.main,
+    "profile": profile.main,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] not in COMMANDS:
-        print("usage: python -m transit_lakehouse.checks capture|quota ...")
+        print(
+            "usage: python -m transit_lakehouse.checks "
+            "capture|quota|profile ..."
+        )
         return 2
     return COMMANDS[argv[0]](argv[1:])
 
