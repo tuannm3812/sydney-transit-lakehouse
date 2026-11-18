@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -162,3 +163,144 @@ def test_short_unchanged_run_does_not_warn(tmp_path: Path) -> None:
     r = evaluate_feed(_feed(), polls, START, END)
     assert r.longest_unchanged_s == 60
     assert not r.warnings
+
+
+def test_html_report_renders_with_disk_runway(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import describe, render_html
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    st["disk"] = {"total": 80e9, "used": 10e9, "free": 70e9}
+    page = render_html(st)
+    assert "<title>Quota and Volume Report</title>" in page
+    assert "Bus positions" in page
+    assert "Disk runway" in page
+    assert "5,760" in page
+    assert describe("service_alerts") == ("Network-wide", "alerts")
+    assert describe("sydneytrains_tripupdates") == ("Trains", "trip updates")
+
+
+def test_html_report_shows_change_against_previous(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    prev = json.loads(json.dumps(st))
+    prev["feeds"][0]["per_day"] = st["feeds"][0]["per_day"] / 2
+    st["previous"] = prev
+    page = render_html(st)
+    assert "vs previous" in page
+    assert "▲ 100%" in page
+
+
+def test_html_report_survives_no_data_and_full_disk(tmp_path: Path) -> None:
+    from transit_lakehouse.checks.quota_report import compute_stats
+    from transit_lakehouse.checks.report_html import render_html
+
+    empty = compute_stats({}, START, END, 60_000)
+    empty["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    assert "<title>" in render_html(empty)
+
+    _write(tmp_path, "buses_vehiclepos")
+    st = compute_stats(read_polls(tmp_path, START, END), START, END, 60_000)
+    st["disk"] = {"total": 80e9, "used": 80e9, "free": 0}
+    page = render_html(st)
+    assert "0 days" in page
+    assert st["downloaded_per_day"] >= st["received_per_day"]
+
+
+def test_slow_feed_window_looks_back_two_intervals() -> None:
+    from transit_lakehouse.checks.capture import feed_window_start
+
+    static = Feed("static_gtfs", "static_gtfs", "https://x", 21600)
+    assert feed_window_start(static, START, END) == END - timedelta(hours=12)
+    assert feed_window_start(_feed(), START, END) == START
+
+
+def _write_at(tmp: Path, seconds: list[float], error: str | None = None):
+    lander = Lander(tmp)
+    for s in seconds:
+        ts = START + timedelta(seconds=s)
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="new",
+                latency_ms=1,
+                header_timestamp=None if error else int(ts.timestamp()) - 5,
+                error=error,
+            )
+        )
+
+
+def _eval(tmp: Path, gate: bool = False):
+    from transit_lakehouse.checks.manifest import first_seen
+
+    polls = read_polls(tmp, START, END)["buses_vehiclepos"]
+    return evaluate_feed(
+        _feed(),
+        polls,
+        START,
+        END,
+        gate,
+        active_since=first_seen(tmp, "buses_vehiclepos"),
+    )
+
+
+def test_leading_outage_after_activation_fails(tmp_path: Path) -> None:
+    # Active since before the window; down for the first 30 minutes.
+    lander = Lander(tmp_path)
+    before = START - timedelta(hours=2)
+    lander.record(
+        PollRecord(
+            feed="buses_vehiclepos",
+            fetched_at=before.isoformat(),
+            status=200,
+            outcome="new",
+            latency_ms=1,
+        )
+    )
+    _write_at(tmp_path, [1800 + 15 * i for i in range(120)])
+    r = _eval(tmp_path)
+    assert r.capture_rate == 0.5
+    assert any(f.startswith("gap 1800s") for f in r.failures)
+
+
+def test_new_feed_is_scored_from_activation(tmp_path: Path) -> None:
+    # First ever poll 30 minutes in: the earlier half is not an outage.
+    _write_at(tmp_path, [1800 + 15 * i for i in range(120)])
+    assert _eval(tmp_path).passed
+
+
+def test_gate_accepts_first_poll_a_second_late(tmp_path: Path) -> None:
+    lander = Lander(tmp_path)
+    lander.record(
+        PollRecord(
+            feed="buses_vehiclepos",
+            fetched_at=(START - timedelta(seconds=14)).isoformat(),
+            status=200,
+            outcome="new",
+            latency_ms=1,
+        )
+    )
+    _write_at(tmp_path, [1 + 15 * i for i in range(240)])
+    r = _eval(tmp_path, gate=True)
+    assert r.passed, r.failures
+
+
+def test_midwindow_gap_fails_even_with_high_capture(tmp_path: Path) -> None:
+    times = [15 * i for i in range(240) if not 100 <= i < 106]  # 90 s gap
+    _write_at(tmp_path, times)
+    r = _eval(tmp_path)
+    assert r.capture_rate > 0.97
+    assert any(f.startswith("gap 105s") for f in r.failures)
+
+
+def test_undecodable_window_fails(tmp_path: Path) -> None:
+    _write_at(tmp_path, [15 * i for i in range(240)], error="decode_error: x")
+    r = _eval(tmp_path)
+    assert "freshness unknown: no feed timestamps" in r.failures
+    assert any(f.startswith("undecodable payloads") for f in r.failures)

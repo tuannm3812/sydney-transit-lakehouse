@@ -15,7 +15,9 @@ response header, in case the gateway does expose limit headers.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import sys
 import time
 from collections import Counter
@@ -28,12 +30,15 @@ from transit_lakehouse.checks.manifest import (
     percentile,
     read_polls,
 )
+from transit_lakehouse.checks.report_html import render_html
 from transit_lakehouse.collector.config import (
     DEFAULT_DAILY_QUOTA,
     load_feeds,
 )
 
 PROBE_SPACING_S = 1.5
+# Per-request IDs: unique on every response, so listing them is noise.
+NOISY_HEADERS = frozenset({"x-amz-cf-id", "x-varnish", "x-request-id"})
 LIMIT_REASONS = ("rate_limited", "quota_exhausted", "http_503", "http_429")
 
 
@@ -50,6 +55,86 @@ def _reason(p: Poll) -> str:
     return (p.error or p.outcome).split(":", 1)[0]
 
 
+def compute_stats(
+    polls: dict[str, list[Poll]],
+    start: datetime,
+    end: datetime,
+    daily_quota: int,
+) -> dict:
+    """Aggregate the manifest into the numbers every report format uses."""
+    # Rate over the time we actually have data for, not the requested
+    # window: a collector started 4 minutes ago is not running at 4/60
+    # of its real rate.
+    firsts = [p[0].fetched_at for p in polls.values() if p]
+    observed_start = max(start, min(firsts)) if firsts else start
+    days = max((end - observed_start).total_seconds() / 86400, 1e-9)
+    feeds = []
+    all_reasons: Counter[str] = Counter()
+    headers: dict[str, set[str]] = {}
+    for feed, items in sorted(polls.items()):
+        reasons = Counter(_reason(p) for p in items)
+        all_reasons.update(reasons)
+        limit_hits = sum(reasons[r] for r in LIMIT_REASONS)
+        sizes = [float(p.size_bytes) for p in items if p.ok]
+        landed = sum(p.size_bytes for p in items if p.outcome == "new")
+        # Polls landed before gzip (D-017) have no stored_bytes, so scale
+        # received bytes by the ratio seen on polls that do.
+        gz = [p for p in items if p.outcome == "new" and p.stored_bytes]
+        gz_in = sum(p.size_bytes for p in gz)
+        ratio = sum(p.stored_bytes for p in gz) / gz_in if gz_in else 1.0
+        for p in items:
+            for k, v in p.headers.items():
+                if k not in NOISY_HEADERS:
+                    headers.setdefault(k, set()).add(v)
+        feeds.append(
+            {
+                "feed": feed,
+                "requests": len(items),
+                "per_day": len(items) / days,
+                "new": reasons["new"],
+                "unchanged": reasons["unchanged"],
+                "limit_hits": limit_hits,
+                "other_errors": sum(1 for p in items if not p.ok) - limit_hits,
+                "size_p50": percentile(sizes, 0.5) if sizes else None,
+                "size_p95": percentile(sizes, 0.95) if sizes else None,
+                "size_max": max(sizes) if sizes else None,
+                # Raw bytes of snapshots we kept (the gzip ratio's base).
+                "received_per_day": landed / days,
+                # Everything that crossed the network, repeats included.
+                "downloaded_per_day": sum(p.size_bytes for p in items if p.ok)
+                / days,
+                "stored_per_day": landed * ratio / days,
+            }
+        )
+    total = sum(f["requests"] for f in feeds)
+    return {
+        "window_start": start.isoformat(),
+        "window_end": end.isoformat(),
+        "observed_hours": days * 24,
+        "generated": datetime.now(UTC).isoformat(timespec="seconds"),
+        "daily_quota": daily_quota,
+        "total_requests": total,
+        "requests_per_day": total / days,
+        "limit_hits": sum(f["limit_hits"] for f in feeds),
+        "outcomes": dict(all_reasons.most_common()),
+        "received_per_day": sum(f["received_per_day"] for f in feeds),
+        "downloaded_per_day": sum(f["downloaded_per_day"] for f in feeds),
+        "stored_per_day": sum(f["stored_per_day"] for f in feeds),
+        "feeds": feeds,
+        "headers": {k: sorted(v)[:5] for k, v in sorted(headers.items())},
+        "disk": None,
+    }
+
+
+def disk_usage(path: Path) -> dict | None:
+    """Total, used and free bytes of the volume holding ``path``."""
+    try:
+        du = shutil.disk_usage(path)
+    except OSError:
+        return None
+    return {"total": du.total, "used": du.used, "free": du.free}
+
+
 def build_report(
     polls: dict[str, list[Poll]],
     start: datetime,
@@ -57,18 +142,19 @@ def build_report(
     daily_quota: int,
 ) -> str:
     """Render the markdown report."""
-    # Rate over the time we actually have data for, not the requested
-    # window: a collector started 4 minutes ago is not running at 4/60
-    # of its real rate.
-    firsts = [p[0].fetched_at for p in polls.values() if p]
-    observed_start = max(start, min(firsts)) if firsts else start
-    days = max((end - observed_start).total_seconds() / 86400, 1e-9)
-    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    return render_markdown(compute_stats(polls, start, end, daily_quota))
+
+
+def render_markdown(st: dict) -> str:
+    start = datetime.fromisoformat(st["window_start"])
+    end = datetime.fromisoformat(st["window_end"])
+    generated = datetime.fromisoformat(st["generated"])
     lines = [
         "# API quota and snapshot size report",
         "",
         f"Window: {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC "
-        f"({days * 24:.1f} h of data). Generated {generated} UTC.",
+        f"({st['observed_hours']:.1f} h of data). "
+        f"Generated {generated:%Y-%m-%d %H:%M} UTC.",
         "",
         "## Requests and limit signals",
         "",
@@ -76,34 +162,21 @@ def build_report(
         "| other errors |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    total = 0
-    limit_hits_total = 0
-    all_reasons: Counter[str] = Counter()
-    header_seen: dict[str, set[str]] = {}
-    for feed, items in sorted(polls.items()):
-        reasons = Counter(_reason(p) for p in items)
-        all_reasons.update(reasons)
-        limit_hits = sum(reasons[r] for r in LIMIT_REASONS)
-        other = sum(1 for p in items if not p.ok) - limit_hits
-        total += len(items)
-        limit_hits_total += limit_hits
+    for f in st["feeds"]:
         lines.append(
-            f"| {feed} | {len(items):,} | {len(items) / days:,.0f} "
-            f"| {reasons['new']:,} | {reasons['unchanged']:,} "
-            f"| {limit_hits} | {other} |"
+            f"| {f['feed']} | {f['requests']:,} | {f['per_day']:,.0f} "
+            f"| {f['new']:,} | {f['unchanged']:,} "
+            f"| {f['limit_hits']} | {f['other_errors']} |"
         )
-        for p in items:
-            for k, v in p.headers.items():
-                header_seen.setdefault(k, set()).add(v)
-    per_day = total / days
+    total, per_day = st["total_requests"], st["requests_per_day"]
     lines += [
         "",
         f"Total: **{total:,} requests ({per_day:,.0f}/day)**, "
-        f"{per_day / daily_quota:.0%} of the assumed "
-        f"{daily_quota:,}/day quota.",
+        f"{per_day / st['daily_quota']:.0%} of the assumed "
+        f"{st['daily_quota']:,}/day quota.",
         "",
     ]
-    if limit_hits_total == 0 and total:
+    if st["limit_hits"] == 0 and total:
         lines.append(
             f"No rate or quota rejections across {total:,} requests. "
             "Over a full 24 h window this confirms the real quota is at "
@@ -111,12 +184,11 @@ def build_report(
         )
     elif total:
         lines.append(
-            f"**{limit_hits_total} limit rejections.** The quota or rate "
+            f"**{st['limit_hits']} limit rejections.** The quota or rate "
             "limit is binding at this cadence; see the reasons below."
         )
-    breakdown = ", ".join(f"{k} {v:,}" for k, v in all_reasons.most_common())
+    breakdown = ", ".join(f"{k} {v:,}" for k, v in st["outcomes"].items())
     lines += ["", f"Outcome breakdown: {breakdown or 'none'}", ""]
-
     lines += [
         "## Snapshot sizes (successful polls)",
         "",
@@ -124,45 +196,30 @@ def build_report(
         "| on disk/30 days |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    landed_total = 0.0
-    stored_total = 0.0
-    for feed, items in sorted(polls.items()):
-        sizes = [float(p.size_bytes) for p in items if p.ok]
-        landed = sum(p.size_bytes for p in items if p.outcome == "new")
-        # Polls landed before gzip (D-017) have no stored_bytes, so scale
-        # received bytes by the ratio seen on polls that do.
-        gz = [p for p in items if p.outcome == "new" and p.stored_bytes]
-        ratio = (
-            sum(p.stored_bytes for p in gz) / sum(p.size_bytes for p in gz)
-            if gz and sum(p.size_bytes for p in gz)
-            else 1.0
-        )
-        stored = landed * ratio
-        landed_total += landed
-        stored_total += stored
-        if not sizes:
-            lines.append(f"| {feed} | - | - | - | - | - | - |")
+    for f in st["feeds"]:
+        if f["size_p50"] is None:
+            lines.append(f"| {f['feed']} | - | - | - | - | - | - |")
             continue
         lines.append(
-            f"| {feed} | {_mb(percentile(sizes, 0.5) or 0)} "
-            f"| {_mb(percentile(sizes, 0.95) or 0)} | {_mb(max(sizes))} "
-            f"| {_mb(landed / days)} | {_mb(stored / days)} "
-            f"| {_mb(stored / days * 30)} |"
+            f"| {f['feed']} | {_mb(f['size_p50'])} | {_mb(f['size_p95'])} "
+            f"| {_mb(f['size_max'])} | {_mb(f['received_per_day'])} "
+            f"| {_mb(f['stored_per_day'])} "
+            f"| {_mb(f['stored_per_day'] * 30)} |"
         )
+    stored = st["stored_per_day"]
     lines += [
         "",
-        f"Received {_mb(landed_total / days)}/day. On disk after gzip: "
-        f"**{_mb(stored_total / days)}/day, "
-        f"{stored_total / days * 30 / 1e9:,.1f} GB per 30 days** "
+        f"Downloaded {_mb(st['downloaded_per_day'])}/day, of which "
+        f"{_mb(st['received_per_day'])}/day was new. On disk after gzip: "
+        f"**{_mb(stored)}/day, {stored * 30 / 1e9:,.1f} GB per 30 days** "
         "before compaction into Iceberg.",
         "",
         "## Response headers observed",
         "",
     ]
-    if header_seen:
-        for k, values in sorted(header_seen.items()):
-            sample = ", ".join(sorted(values)[:5])
-            lines.append(f"- `{k}`: {sample}")
+    if st["headers"]:
+        for k, values in st["headers"].items():
+            lines.append(f"- `{k}`: {', '.join(values)}")
     else:
         lines.append(
             "None of the kept headers (limit, quota, retry, x-*) were "
@@ -220,6 +277,15 @@ def main(argv: list[str] | None = None) -> int:
         default=int(os.environ.get("DAILY_QUOTA", DEFAULT_DAILY_QUOTA)),
     )
     parser.add_argument("--out", type=Path, help="Write markdown here.")
+    parser.add_argument("--json", type=Path, help="Write the stats here.")
+    parser.add_argument(
+        "--previous",
+        type=Path,
+        help="Stats JSON from an earlier run, for change columns.",
+    )
+    parser.add_argument(
+        "--html", type=Path, help="Write the styled HTML report here."
+    )
     parser.add_argument("--probe", action="store_true")
     parser.add_argument(
         "--only",
@@ -233,12 +299,23 @@ def main(argv: list[str] | None = None) -> int:
 
     end = datetime.now(UTC)
     start = end - parse_window(args.window)
-    report = build_report(
+    stats = compute_stats(
         read_polls(args.data_dir, start, end), start, end, args.daily_quota
     )
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(report, encoding="utf-8")
+    stats["disk"] = disk_usage(args.data_dir)
+    if args.previous and args.previous.exists():
+        stats["previous"] = json.loads(args.previous.read_text("utf-8"))
+        stats["previous"].pop("previous", None)  # keep one level only
+    report = render_markdown(stats)
+    outputs = {
+        args.out: report,
+        args.json: json.dumps(stats, indent=2),
+        args.html: render_html(stats) if args.html else None,
+    }
+    for path, text in outputs.items():
+        if path and text is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
     print(report)
     return 0
 

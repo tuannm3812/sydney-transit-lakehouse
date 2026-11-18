@@ -29,11 +29,12 @@ import math
 import os
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from transit_lakehouse.checks.manifest import (
     Poll,
+    first_seen,
     parse_window,
     percentile,
     read_polls,
@@ -50,6 +51,8 @@ FRESHNESS_P95_SLA_S = {
 # Plan: the same sha256 for more than 5 minutes means the feed is stuck.
 STUCK_AFTER_S = 300.0
 STALE_AFTER_INTERVALS = 4
+# Partial decodes (D-020) still give a timestamp; full failures do not.
+INVALID_PAYLOAD_LIMIT = 0.01
 
 
 @dataclass
@@ -79,13 +82,20 @@ def evaluate_feed(
     start: datetime,
     end: datetime,
     gate: bool = False,
+    active_since: datetime | None = None,
 ) -> FeedResult:
-    """Score one feed against its SLAs for the window."""
+    """Score one feed against its SLAs for the window.
+
+    ``active_since`` is when the feed was first ever polled. Outside gate
+    mode the minutes before it are not counted; an outage after it is.
+    Without it, the first poll in the window stands in (less strict).
+    """
     failures: list[str] = []
     first = polls[0].fetched_at if polls else None
-    # Outside gate mode, don't penalise the minutes before the collector
-    # first started; the gate demands the full window.
-    effective_start = start if gate or first is None else max(start, first)
+    activated = active_since or first
+    effective_start = (
+        start if gate or activated is None else max(start, activated)
+    )
     span = (end - effective_start).total_seconds()
     # Slots in [start, end): a poll at the very start counts, so ceil.
     expected = max(1, math.ceil(span / feed.interval_s))
@@ -96,6 +106,9 @@ def evaluate_feed(
     p50, p95 = percentile(ages, 0.5), percentile(ages, 0.95)
     times = [p.fetched_at for p in ok_polls]
     gaps = [(b - a).total_seconds() for a, b in itertools.pairwise(times)]
+    if times:
+        # Silence at the start of the window is a gap too.
+        gaps.append((times[0] - effective_start).total_seconds())
     staleness = (end - times[-1]).total_seconds() if times else None
 
     if capture < CAPTURE_SLA:
@@ -107,7 +120,23 @@ def evaluate_feed(
         feed.interval_s
     ):
         failures.append("stale: no recent successful poll")
-    if gate and (first is None or first > start):
+    gap_limit = STALE_AFTER_INTERVALS * feed.interval_s
+    if gaps and max(gaps) > gap_limit:
+        failures.append(f"gap {max(gaps):.0f}s > {gap_limit:.0f}s")
+    if feed.is_realtime and ok_polls:
+        if not ages:
+            failures.append("freshness unknown: no feed timestamps")
+        bad = sum(
+            1 for p in ok_polls if (p.error or "").startswith("decode_error")
+        )
+        if bad / len(ok_polls) > INVALID_PAYLOAD_LIMIT:
+            failures.append(
+                f"undecodable payloads {bad / len(ok_polls):.1%} "
+                f"> {INVALID_PAYLOAD_LIMIT:.0%}"
+            )
+    # The first slot may land up to one interval after the window opens.
+    grace = timedelta(seconds=feed.interval_s)
+    if gate and (activated is None or activated > start + grace):
         failures.append("insufficient history for the full window")
 
     longest = longest_unchanged_s(ok_polls) if feed.is_realtime else None
@@ -151,6 +180,15 @@ def longest_unchanged_s(ok_polls: list[Poll]) -> float | None:
     return longest
 
 
+def feed_window_start(feed: Feed, start: datetime, end: datetime) -> datetime:
+    """Widen the window for feeds polled less often than it spans.
+
+    A 1 h window over a 6-hourly feed usually holds no poll at all, which
+    would read as a stale feed. Look back at least two intervals instead.
+    """
+    return min(start, end - timedelta(seconds=2 * feed.interval_s))
+
+
 def _fmt(value: float | None, suffix: str = "s") -> str:
     return "-" if value is None else f"{value:.0f}{suffix}"
 
@@ -180,13 +218,25 @@ def main(argv: list[str] | None = None) -> int:
     end = datetime.now(UTC)
     start = end - parse_window(args.window)
     feeds = load_feeds(args.feeds)
-    polls = read_polls(args.data_dir, start, end)
+    starts = {f.name: feed_window_start(f, start, end) for f in feeds}
+    polls = read_polls(args.data_dir, min(starts.values()), end)
     results = [
-        evaluate_feed(f, polls.get(f.name, []), start, end, args.gate)
+        evaluate_feed(
+            f,
+            [
+                p
+                for p in polls.get(f.name, [])
+                if p.fetched_at >= starts[f.name]
+            ],
+            starts[f.name],
+            end,
+            args.gate,
+            active_since=first_seen(args.data_dir, f.name),
+        )
         for f in feeds
     ]
 
-    print(f"Capture check {start:%Y-%m-%d %H:%M} to {end:%H:%M} UTC")
+    print(f"Capture check {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC")
     print(
         f"{'feed':<32}{'capture':>9}{'ok/exp':>14}{'p50':>6}"
         f"{'p95':>6}{'gap':>7}  status"

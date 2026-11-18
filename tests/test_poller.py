@@ -130,3 +130,63 @@ def test_parse_header_reports_garbage() -> None:
     ts, n, err = parse_header(b"\xff\xff\xff")
     assert (ts, n) == (None, None)
     assert err.startswith("decode_error")
+
+
+@respx.mock
+async def test_static_gtfs_uses_conditional_get(settings: Settings) -> None:
+    static = Feed(
+        "static_gtfs", "static_gtfs", "https://example.test/gtfs", 21600
+    )
+    stamp = "Sun, 16 Nov 2026 17:40:00 GMT"
+    route = respx.get(static.url).mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                content=b"PK zip",
+                headers={"Last-Modified": stamp, "ETag": '"v1"'},
+            ),
+            httpx.Response(304),
+        ]
+    )
+    c = _collector(settings)
+    rec1, _ = await c.poll_once(static)
+    rec2, backoff = await c.poll_once(static)
+    sent = route.calls[1].request.headers
+    assert sent["if-modified-since"] == stamp
+    assert sent["if-none-match"] == '"v1"'
+    assert (rec1.outcome, rec2.outcome, backoff) == ("new", "unchanged", 0)
+    assert rec2.sha256 == rec1.sha256
+    assert len(list((settings.data_dir / "raw").rglob("*.zip"))) == 1
+
+
+@respx.mock
+async def test_conditional_validators_survive_restart(
+    settings: Settings,
+) -> None:
+    static = Feed(
+        "static_gtfs", "static_gtfs", "https://example.test/gtfs", 21600
+    )
+    route = respx.get(static.url).mock(
+        side_effect=[
+            httpx.Response(200, content=b"PK", headers={"ETag": '"v1"'}),
+            httpx.Response(304),
+        ]
+    )
+    await _collector(settings).poll_once(static)
+    await _collector(settings).poll_once(static)  # fresh process
+    assert route.calls[1].request.headers["if-none-match"] == '"v1"'
+
+
+@respx.mock
+async def test_realtime_feeds_send_no_validators(
+    settings: Settings, feed: Feed
+) -> None:
+    route = respx.get(feed.url).mock(
+        return_value=httpx.Response(
+            200, content=make_feed_bytes(1), headers={"ETag": '"x"'}
+        )
+    )
+    c = _collector(settings)
+    await c.poll_once(feed)
+    await c.poll_once(feed)
+    assert "if-none-match" not in route.calls[1].request.headers
