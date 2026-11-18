@@ -1,6 +1,6 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-17.*
+*Rewritten in place. Last updated 2026-11-18.*
 
 **Phase 0, "Collect first" (week 1).** The collector runs on AWS EC2 in Sydney (D-015, D-016) and has captured 100% of polls on the 6 original feeds since 2026-11-17 06:45 UTC. Static GTFS and Service Alerts were added the same evening after reconciling the plan (D-019).
 
@@ -32,11 +32,11 @@
 
 | day | date | lowest-feed capture | p95 freshness | notes |
 |---|---|---:|---:|---|
-| | | | | |
+| 1 (partial, from 06:45 UTC) | 2026-11-17 | 100.00% (all 8 feeds) | ≤ 15 s realtime VP/TU; 86 s alerts | Server cron `capture-20261118.json`. 0 limit hits; preview quota 45% (27,299/day over 17.3 h). |
 
 ## Blocked on Mike
 
-- Merging PR #1, so the server can track `main`.
+- Nothing. PR #1 is merged; the server switches its checkout to `main` on the next deploy.
 
 ## Next after the gate
 
