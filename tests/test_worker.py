@@ -340,3 +340,81 @@ def test_warehouse_lands_inside_a_path_with_spaces(tmp_path: Path) -> None:
     warehouse = data_dir / "lakehouse" / "warehouse"
     assert list(warehouse.rglob("*.parquet"))
     assert not list(tmp_path.rglob("*%20*"))
+
+
+def test_uniform_delay_shift_writes_only_the_trip_delay(
+    data_dir: Path,
+) -> None:
+    ts = int(T0.timestamp())
+    land(
+        data_dir,
+        TU_FEED.name,
+        [
+            tu_bytes(ts, {"A": [0, 0, 0]}),
+            tu_bytes(ts + 30, {"A": [60, 60, 60]}),  # whole trip late
+            tu_bytes(ts + 60, {"A": [60, 60, 120]}),  # one stop moves
+        ],
+    )
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [TU_FEED])
+    stops = rows(catalog, "silver.stop_prediction")
+    assert len(stops) == 3 + 0 + 1
+    trips = rows(catalog, "silver.trip_status")
+    assert sorted(r["current_delay_s"] for r in trips) == [0, 60]
+
+
+def test_offset_encoding_is_lossless(data_dir: Path) -> None:
+    """Every stop's prediction in every snapshot can be rebuilt."""
+    import random
+
+    rng = random.Random(7)
+    ts = int(T0.timestamp())
+    delays = {f"T{i}": [0] * 6 for i in range(5)}
+    truth = []
+    payloads = []
+    for k in range(25):
+        for trip, ds in delays.items():
+            roll = rng.random()
+            if roll < 0.4:  # whole trip shifts
+                shift = rng.choice([-30, 30, 90])
+                delays[trip] = [d + shift for d in ds]
+            elif roll < 0.6:  # one stop and those after it move
+                j = rng.randrange(6)
+                delays[trip] = ds[:j] + [d + 45 for d in ds[j:]]
+        payloads.append(tu_bytes(ts + 30 * k, delays))
+        truth.append({t: list(ds) for t, ds in delays.items()})
+    land(data_dir, TU_FEED.name, payloads)
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [TU_FEED])
+    stops = rows(catalog, "silver.stop_prediction")
+    trips = rows(catalog, "silver.trip_status")
+    base_time = int(T0.timestamp())
+
+    for k, snapshot in enumerate(truth):
+        at = T0 + timedelta(seconds=30 * k)
+        for trip, ds in snapshot.items():
+            current = max(
+                (
+                    r
+                    for r in trips
+                    if r["trip_id"] == trip and r["fetched_at"] <= at
+                ),
+                key=lambda r: r["fetched_at"],
+            )
+            for seq, delay in enumerate(ds, start=1):
+                row = max(
+                    (
+                        r
+                        for r in stops
+                        if r["trip_id"] == trip
+                        and r["stop_sequence"] == seq
+                        and r["fetched_at"] <= at
+                    ),
+                    key=lambda r: r["fetched_at"],
+                )
+                shift = current["current_delay_s"] - row["trip_delay_s"]
+                assert row["arrival_delay_s"] + shift == delay
+                rebuilt = row["arrival_time"].timestamp() + shift
+                assert rebuilt == base_time + 600 * seq + delay
+    # and it is smaller than one row per stop per change
+    assert len(stops) < 25 * 5 * 6 / 2

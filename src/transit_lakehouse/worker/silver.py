@@ -112,6 +112,7 @@ STOP_COLUMNS = (
     "departure_time",
     "departure_delay_s",
     "stop_status",
+    "trip_delay_s",
     "observed_at",
     "fetched_at",
     "obs_date",
@@ -129,6 +130,7 @@ TRIP_COLUMNS = (
     "trip_status",
     "vehicle_id",
     "delay_s",
+    "current_delay_s",
     "stop_count",
     "observed_at",
     "fetched_at",
@@ -266,24 +268,18 @@ class FeedDiffer:
                 trip.direction_id if trip.HasField("direction_id") else None
             )
             ts_observed = _ts(tu.timestamp) if tu.timestamp else observed
-            for stu in tu.stop_time_update:
+            parsed = [_stop_values(stu) for stu in tu.stop_time_update]
+            base = trip_delay(parsed)
+            for stu, value in zip(tu.stop_time_update, parsed, strict=True):
                 seq = (
                     stu.stop_sequence
                     if stu.HasField("stop_sequence")
                     else None
                 )
                 skey = (*tkey, seq, stu.stop_id)
-                arr = stu.arrival if stu.HasField("arrival") else None
-                dep = stu.departure if stu.HasField("departure") else None
-                value = (
-                    arr.time if arr and arr.HasField("time") else None,
-                    arr.delay if arr and arr.HasField("delay") else None,
-                    dep.time if dep and dep.HasField("time") else None,
-                    dep.delay if dep and dep.HasField("delay") else None,
-                    stu.schedule_relationship,
-                )
-                stops[skey] = value
-                if want_stops and self.prev_stops.get(skey) != value:
+                change = change_key(value, base)
+                stops[skey] = change
+                if want_stops and self.prev_stops.get(skey) != change:
                     emitted += 1
                     out.stops.add(
                         self.mode,
@@ -299,6 +295,7 @@ class FeedDiffer:
                         _ts(value[2]),
                         value[3],
                         _enum_name(TU.ScheduleRelationship, value[4]),
+                        base,
                         ts_observed,
                         snap.fetched_at,
                         obs_date,
@@ -311,6 +308,7 @@ class FeedDiffer:
                 tu.delay if tu.HasField("delay") else None,
                 trip.start_time,
                 len(tu.stop_time_update),
+                base,
             )
             trips[tkey] = tvalue
             if want_trips and self.prev_trips.get(tkey) != tvalue:
@@ -329,6 +327,7 @@ class FeedDiffer:
                     ),
                     tvalue[2] or None,
                     tvalue[3],
+                    tvalue[6],
                     tvalue[5],
                     ts_observed,
                     snap.fetched_at,
@@ -404,6 +403,55 @@ class FeedDiffer:
             )
         self.prev_vehicles = seen
         return emitted
+
+
+def _stop_values(stu) -> tuple:
+    """(arrival time, arrival delay, departure time, departure delay,
+    stop status) of one stop-time update, None where absent."""
+    arr = stu.arrival if stu.HasField("arrival") else None
+    dep = stu.departure if stu.HasField("departure") else None
+    return (
+        arr.time if arr and arr.HasField("time") else None,
+        arr.delay if arr and arr.HasField("delay") else None,
+        dep.time if dep and dep.HasField("time") else None,
+        dep.delay if dep and dep.HasField("delay") else None,
+        stu.schedule_relationship,
+    )
+
+
+def trip_delay(stops: list[tuple]) -> int | None:
+    """The trip's current delay: its first listed stop's delay."""
+    for _, arr_delay, _, dep_delay, _ in stops:
+        if arr_delay is not None:
+            return arr_delay
+        if dep_delay is not None:
+            return dep_delay
+    return None
+
+
+def change_key(value: tuple, base: int | None) -> tuple:
+    """What must differ for a stop prediction to count as changed.
+
+    When a bus runs late, TfNSW moves every remaining stop by the same
+    delay. Storing each of them again is most of the bus volume
+    (docs/reports/worker-dryrun-20261119.md). So a stop is compared by
+    its implied scheduled time (time - delay) and its delay *relative
+    to the trip's current delay*; a uniform shift changes only the trip
+    delay, which ``trip_status.current_delay_s`` records. Lossless: the
+    prediction at any moment is the stop's latest row shifted by the
+    change in trip delay since that row (``trip_delay_s``).
+    """
+    arr_time, arr_delay, dep_time, dep_delay, status = value
+    if base is None:
+        return value
+
+    def part(time, delay):
+        if delay is None:
+            return (time, None)
+        sched = None if time is None else time - delay
+        return (sched, delay - base)
+
+    return (*part(arr_time, arr_delay), *part(dep_time, dep_delay), status)
 
 
 def quarantine_reason(

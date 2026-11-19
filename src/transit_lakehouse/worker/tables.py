@@ -94,6 +94,8 @@ TYPES: dict[str, IcebergType] = {
     "trip_status": STR,
     "vehicle_id": STR,
     "delay_s": INT,
+    "current_delay_s": INT,
+    "trip_delay_s": INT,
     "stop_count": INT,
     # vehicles
     "vehicle_label": STR,

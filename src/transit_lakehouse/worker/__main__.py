@@ -81,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
+    # pyiceberg logs "Defaulting to PyArrow FileIO" once per table opened.
+    logging.getLogger("pyiceberg").setLevel(logging.WARNING)
     catalog = open_catalog(args.data_dir)
 
     if args.cmd == "status":
