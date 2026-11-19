@@ -316,7 +316,7 @@ def test_expire_keeps_current_snapshot(data_dir: Path) -> None:
     expected = rows(catalog, "silver.vehicle_position")
     expire(catalog, timedelta(seconds=0))
     for table in ensure_tables(catalog).values():
-        assert len(table.snapshots()) == 1
+        assert len(table.snapshots()) <= 1  # alert tables were never used
     assert rows(catalog, "silver.vehicle_position") == expected
 
 
@@ -418,3 +418,99 @@ def test_offset_encoding_is_lossless(data_dir: Path) -> None:
                 assert rebuilt == base_time + 600 * seq + delay
     # and it is smaller than one row per stop per change
     assert len(stops) < 25 * 5 * 6 / 2
+
+
+AL_FEED = Feed("service_alerts", "service_alerts", "https://x/alerts", 60)
+
+
+def _ld(field_no: int, body: bytes) -> bytes:
+    from transit_lakehouse.worker.decode import _varint
+
+    return _varint(field_no << 3 | 2) + _varint(len(body)) + body
+
+
+def alert_entity(alert_id: str, header: str, route: str) -> bytes:
+    ent = gtfs_realtime_pb2.FeedEntity()
+    ent.id = alert_id
+    a = ent.alert
+    a.cause = gtfs_realtime_pb2.Alert.CONSTRUCTION
+    a.effect = gtfs_realtime_pb2.Alert.DETOUR
+    a.header_text.translation.add(text=header, language="en")
+    period = a.active_period.add()
+    period.start, period.end = 1_763_400_000, 1_763_500_000
+    sel = a.informed_entity.add()
+    sel.route_id = route
+    sel.stop_id = "2000338"
+    return ent.SerializeToString()
+
+
+def tfnsw_bad_entity(alert_id: str) -> bytes:
+    """An alert whose trip selector carries a string in field 7 (D-020)."""
+    trip = gtfs_realtime_pb2.TripDescriptor(trip_id="T9").SerializeToString()
+    trip += _ld(7, b"135N.817.160.64.A.8.9120237")
+    selector = _ld(4, trip)
+    alert = _ld(5, selector) + b"\x30\x01"  # cause = UNKNOWN_CAUSE
+    return _ld(1, alert_id.encode()) + _ld(5, alert)
+
+
+def alerts_bytes(ts: int, entities: list[bytes]) -> bytes:
+    header = gtfs_realtime_pb2.FeedHeader(
+        gtfs_realtime_version="2.0", timestamp=ts
+    ).SerializeToString()
+    return _ld(1, header) + b"".join(_ld(2, e) for e in entities)
+
+
+def test_tfnsw_alert_is_repaired_not_dropped() -> None:
+    from transit_lakehouse.worker.decode import Snapshot
+
+    bad = tfnsw_bad_entity("A9")
+    with pytest.raises(Exception):  # noqa: B017 - the bindings reject it
+        gtfs_realtime_pb2.FeedEntity().ParseFromString(bad)
+    payload = alerts_bytes(1_763_431_200, [alert_entity("A1", "x", "R"), bad])
+    snap = decode(payload, Snapshot("f", "raw/x", T0, "abc", 1))
+    assert [e.id for e in snap.entities] == ["A1", "A9"]
+    assert (snap.entities_repaired, snap.entity_errors) == (1, 0)
+    assert snap.entities[1].alert.informed_entity[0].trip.trip_id == "T9"
+
+
+def test_alerts_history_new_changed_removed(data_dir: Path) -> None:
+    ts = int(T0.timestamp())
+    land(
+        data_dir,
+        AL_FEED.name,
+        [
+            alerts_bytes(ts, [alert_entity("A1", "Lift out", "R1")]),
+            alerts_bytes(ts + 60, [alert_entity("A1", "Lift out", "R1")]),
+            alerts_bytes(
+                ts + 120,
+                [
+                    alert_entity("A1", "Lift out until 5 pm", "R1"),
+                    tfnsw_bad_entity("A9"),
+                ],
+            ),
+            alerts_bytes(ts + 180, [tfnsw_bad_entity("A9")]),
+        ],
+    )
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [AL_FEED])
+    alerts = sorted(
+        rows(catalog, "silver.alert"), key=lambda r: r["fetched_at"]
+    )
+    assert sorted((r["alert_id"], r["event"]) for r in alerts) == [
+        ("A1", "changed"),
+        ("A1", "new"),
+        ("A1", "removed"),
+        ("A9", "new"),
+    ]
+    first = next(r for r in alerts if r["event"] == "new")
+    assert first["cause"] == "CONSTRUCTION" and first["effect"] == "DETOUR"
+    assert first["header_text"] == "Lift out"
+    assert first["mode"] == "all"
+    scopes = rows(catalog, "silver.alert_scope")
+    assert {(r["alert_id"], r["route_id"], r["trip_id"]) for r in scopes} == {
+        ("A1", "R1", None),
+        ("A9", None, "T9"),
+    }
+    assert len(scopes) == 3  # A1 twice (new, changed), A9 once
+    snaps = rows(catalog, "bronze.snapshot")
+    assert sum(r["entities_repaired"] for r in snaps) == 2

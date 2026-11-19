@@ -9,9 +9,9 @@ once with its new rows and watermarks. A crash at any point is safe:
   so the next run decodes from the lowest watermark and emits rows only
   to the tables that do not hold them yet.
 
-Realtime vehicle positions and trip updates are built here; then at most
-one new static timetable zip per run (timetable.py). Service Alerts get
-their own model (docs/9_phase1.md).
+Realtime vehicle positions, trip updates and Service Alerts (a type-2
+history per alert) are built here, then at most one new static timetable
+zip per run (timetable.py).
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ TABLES_FOR_KIND: dict[str, tuple[str, ...]] = {
         "silver.trip_status",
     ),
     "vehicle_positions": ("bronze.snapshot", "silver.vehicle_position"),
+    "service_alerts": (
+        "bronze.snapshot",
+        "silver.alert",
+        "silver.alert_scope",
+    ),
 }
 # Flush to Iceberg when this many rows are buffered, so a backlog of
 # bus trip updates never outgrows the 2 GB host. A real 8 am peak

@@ -44,6 +44,8 @@ from pyiceberg.types import (
 )
 
 from transit_lakehouse.worker.silver import (
+    ALERT_COLUMNS,
+    ALERT_SCOPE_COLUMNS,
     SNAPSHOT_COLUMNS,
     STOP_COLUMNS,
     TRIP_COLUMNS,
@@ -75,6 +77,7 @@ TYPES: dict[str, IcebergType] = {
     "stored_bytes": LONG,
     "entities": INT,
     "entity_errors": INT,
+    "entities_repaired": INT,
     "decode_error": STR,
     "rows_emitted": INT,
     "ingested_at": TSZ,
@@ -109,6 +112,21 @@ TYPES: dict[str, IcebergType] = {
     "event_ts": TSZ,
     "quarantined": BOOL,
     "quarantine_reason": STR,
+    # alerts
+    "alert_id": STR,
+    "event": STR,
+    "content_hash": STR,
+    "cause": STR,
+    "effect": STR,
+    "severity_level": STR,
+    "header_text": STR,
+    "description_text": STR,
+    "url": STR,
+    "active_start": TSZ,
+    "active_end": TSZ,
+    "active_periods": STR,
+    "agency_id": STR,
+    "route_type": INT,
 }
 
 TABLES: dict[str, tuple[str, ...]] = {
@@ -116,6 +134,8 @@ TABLES: dict[str, tuple[str, ...]] = {
     "silver.stop_prediction": STOP_COLUMNS,
     "silver.trip_status": TRIP_COLUMNS,
     "silver.vehicle_position": VEHICLE_COLUMNS,
+    "silver.alert": ALERT_COLUMNS,
+    "silver.alert_scope": ALERT_SCOPE_COLUMNS,
 }
 
 # Sort within each write so Parquet row groups cluster by trip and stop
@@ -131,6 +151,8 @@ SORT_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "silver.trip_status": ("mode", "trip_id", "start_date", "fetched_at"),
     "silver.vehicle_position": ("mode", "vehicle_id", "fetched_at"),
+    "silver.alert": ("alert_id", "fetched_at"),
+    "silver.alert_scope": ("alert_id", "fetched_at"),
 }
 
 

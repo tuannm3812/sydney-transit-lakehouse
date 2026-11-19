@@ -7,9 +7,10 @@ the feed header timestamp and the decoded entities.
 Decoding is tolerant. TfNSW sometimes sends fields the official bindings
 cannot read (a string in ``TripDescriptor`` field 7, D-020), which makes
 a whole-message parse fail. When that happens the envelope is walked by
-hand and each entity is parsed on its own, so one bad entity costs one
-row, not the snapshot. Failed entities are counted, never dropped
-silently.
+hand and each entity is parsed on its own; an entity that still fails is
+retried without that one field (counted as repaired). One bad entity
+costs one row, not the snapshot. Failed entities are counted, never
+dropped silently.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ class Snapshot:
     header_ts: int | None = None
     entities: list[gtfs_realtime_pb2.FeedEntity] = field(default_factory=list)
     entity_errors: int = 0
+    entities_repaired: int = 0  # parsed after dropping TfNSW field 7
     decode_error: str = ""  # whole-file failure, or partial_decode note
 
     @property
@@ -108,14 +110,83 @@ def _decode_per_entity(
                 try:
                     ent.ParseFromString(body)
                 except DecodeError:
-                    snap.entity_errors += 1
-                    continue
+                    ent = _repair(body)
+                    if ent is None:
+                        snap.entity_errors += 1
+                        continue
+                    snap.entities_repaired += 1
                 snap.entities.append(ent)
     except DecodeError as exc:
         snap.decode_error = f"decode_error: {full_error}; envelope: {exc}"
         return snap
     snap.decode_error = f"partial_decode: {full_error}"
     return snap
+
+
+# Where TfNSW's alerts put a string the bindings read as a message:
+# FeedEntity.alert(5) → Alert.informed_entity(5) → EntitySelector.trip(4)
+# → TripDescriptor field 7 (``modified_trip`` in the spec, D-020).
+TFNSW_BAD_FIELD = (5, 5, 4, 7)
+
+
+def _varint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if value:
+            out.append(byte | 0x80)
+        else:
+            out.append(byte)
+            return bytes(out)
+
+
+def drop_field(buf: bytes, path: tuple[int, ...]) -> bytes:
+    """Re-encode a message without the field at a nested path.
+
+    Every other byte is copied as it was, so nothing else changes.
+    """
+    out = bytearray()
+    pos = 0
+    while pos < len(buf):
+        start = pos
+        key, pos = _read_varint(buf, pos)
+        field_no, wire = key >> 3, key & 7
+        if wire == 2:
+            size, body_at = _read_varint(buf, pos)
+            end = body_at + size
+            if end > len(buf):
+                raise DecodeError("truncated field")
+            if field_no == path[0]:
+                if len(path) == 1:
+                    pos = end
+                    continue
+                body = drop_field(buf[body_at:end], path[1:])
+                out += _varint(key) + _varint(len(body)) + body
+                pos = end
+                continue
+            pos = end
+        elif wire == 0:
+            _, pos = _read_varint(buf, pos)
+        elif wire in (1, 5):
+            pos += 8 if wire == 1 else 4
+        else:
+            raise DecodeError(f"unexpected wire type {wire}")
+        if field_no == path[0] and len(path) == 1:
+            continue
+        out += buf[start:pos]
+    return bytes(out)
+
+
+def _repair(body: bytes) -> gtfs_realtime_pb2.FeedEntity | None:
+    """Parse an entity after dropping TfNSW's mistyped field, or None."""
+    try:
+        fixed = drop_field(body, TFNSW_BAD_FIELD)
+        ent = gtfs_realtime_pb2.FeedEntity()
+        ent.ParseFromString(fixed)
+    except DecodeError:
+        return None
+    return ent
 
 
 def read_snapshot(data_dir: Path, feed: str, rel: str) -> Snapshot:

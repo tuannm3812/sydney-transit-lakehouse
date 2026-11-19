@@ -22,6 +22,8 @@ same rows (the Phase 1 gate).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -38,6 +40,7 @@ MODES = (
     ("lightrail_", "lightrail"),
     ("ferries_", "ferry"),
     ("nswtrains_", "nswtrains"),
+    ("service_alerts", "all"),  # one statewide feed for every mode
 )
 
 # Quarantine thresholds. Nothing in Sydney's fleet runs at 150 km/h
@@ -93,6 +96,7 @@ SNAPSHOT_COLUMNS = (
     "stored_bytes",
     "entities",
     "entity_errors",
+    "entities_repaired",
     "decode_error",
     "rows_emitted",
     "ingested_at",
@@ -138,6 +142,44 @@ TRIP_COLUMNS = (
     "source_file",
 )
 
+ALERT_COLUMNS = (
+    "mode",
+    "feed",
+    "alert_id",
+    "event",
+    "content_hash",
+    "cause",
+    "effect",
+    "severity_level",
+    "header_text",
+    "description_text",
+    "url",
+    "active_start",
+    "active_end",
+    "active_periods",
+    "observed_at",
+    "fetched_at",
+    "obs_date",
+    "source_file",
+)
+
+ALERT_SCOPE_COLUMNS = (
+    "mode",
+    "feed",
+    "alert_id",
+    "content_hash",
+    "agency_id",
+    "route_id",
+    "route_type",
+    "stop_id",
+    "trip_id",
+    "start_date",
+    "direction_id",
+    "fetched_at",
+    "obs_date",
+    "source_file",
+)
+
 VEHICLE_COLUMNS = (
     "mode",
     "feed",
@@ -165,6 +207,17 @@ VEHICLE_COLUMNS = (
 )
 
 
+def _text(value) -> str | None:
+    """English text of a TranslatedString, else its first translation."""
+    best = None
+    for tr in value.translation:
+        if tr.language in ("en", "en-AU", "en-au"):
+            return tr.text
+        if best is None:
+            best = tr.text
+    return best
+
+
 def _enum_name(enum, value: int) -> str:
     return enum.Name(value) if value in enum.values() else str(value)
 
@@ -185,6 +238,10 @@ class Rows:
     stops: Columns = field(default_factory=lambda: Columns(STOP_COLUMNS))
     trips: Columns = field(default_factory=lambda: Columns(TRIP_COLUMNS))
     vehicles: Columns = field(default_factory=lambda: Columns(VEHICLE_COLUMNS))
+    alerts: Columns = field(default_factory=lambda: Columns(ALERT_COLUMNS))
+    scopes: Columns = field(
+        default_factory=lambda: Columns(ALERT_SCOPE_COLUMNS)
+    )
 
     def by_table(self) -> dict[str, Columns]:
         return {
@@ -192,6 +249,8 @@ class Rows:
             "silver.stop_prediction": self.stops,
             "silver.trip_status": self.trips,
             "silver.vehicle_position": self.vehicles,
+            "silver.alert": self.alerts,
+            "silver.alert_scope": self.scopes,
         }
 
     def __len__(self) -> int:
@@ -208,6 +267,7 @@ class FeedDiffer:
         self.prev_stops: dict[tuple, tuple] = {}
         self.prev_trips: dict[tuple, tuple] = {}
         self.prev_vehicles: dict[str, tuple] = {}
+        self.prev_alerts: dict[str, str] = {}
 
     def seed(self, snap: Snapshot) -> None:
         """Load a snapshot as 'previous' without emitting rows."""
@@ -230,6 +290,8 @@ class FeedDiffer:
             emitted = self._trip_updates(snap, out, emit)
         elif self.kind == "vehicle_positions":
             emitted = self._vehicles(snap, out, emit)
+        elif self.kind == "service_alerts":
+            emitted = self._alerts(snap, out, emit)
         else:
             emitted = 0
         if out is not None and emit("bronze.snapshot"):
@@ -245,6 +307,7 @@ class FeedDiffer:
                 snap.stored_bytes,
                 len(snap.entities),
                 snap.entity_errors,
+                snap.entities_repaired,
                 snap.decode_error or None,
                 emitted,
                 ingested_at,
@@ -335,6 +398,108 @@ class FeedDiffer:
                     snap.source_file,
                 )
         self.prev_stops, self.prev_trips = stops, trips
+        return emitted
+
+    def _alerts(self, snap: Snapshot, out: Rows | None, emit) -> int:
+        """One row per alert when it appears, changes or is removed.
+
+        An alert's version is the sha256 of its serialised content, so
+        ``silver.alert`` is a type-2 history: each row is valid until
+        the next row for the same alert_id. Scope rows (the routes,
+        stops and trips it affects) are written with each new version.
+        """
+        current: dict[str, str] = {}
+        observed = _ts(snap.header_ts)
+        obs_date = snap.fetched_at.date()
+        want = out is not None and emit("silver.alert")
+        want_scope = out is not None and emit("silver.alert_scope")
+        emitted = 0
+        for ent in snap.entities:
+            if not ent.HasField("alert") or ent.is_deleted:
+                continue
+            alert = ent.alert
+            digest = hashlib.sha256(
+                alert.SerializeToString(deterministic=True)
+            ).hexdigest()[:16]
+            current[ent.id] = digest
+            before = self.prev_alerts.get(ent.id)
+            if before == digest:
+                continue
+            event = "new" if before is None else "changed"
+            if want:
+                emitted += 1
+                periods = [
+                    (p.start or None, p.end or None)
+                    for p in alert.active_period
+                ]
+                starts = [a for a, _ in periods if a]
+                ends = [b for _, b in periods if b]
+                out.alerts.add(
+                    self.mode,
+                    self.feed,
+                    ent.id,
+                    event,
+                    digest,
+                    _enum_name(gtfs_realtime_pb2.Alert.Cause, alert.cause)
+                    if alert.HasField("cause")
+                    else None,
+                    _enum_name(gtfs_realtime_pb2.Alert.Effect, alert.effect)
+                    if alert.HasField("effect")
+                    else None,
+                    _enum_name(
+                        gtfs_realtime_pb2.Alert.SeverityLevel,
+                        alert.severity_level,
+                    )
+                    if alert.HasField("severity_level")
+                    else None,
+                    _text(alert.header_text),
+                    _text(alert.description_text),
+                    _text(alert.url),
+                    _ts(min(starts)) if starts else None,
+                    _ts(max(ends)) if ends else None,
+                    json.dumps(periods, separators=(",", ":")),
+                    observed,
+                    snap.fetched_at,
+                    obs_date,
+                    snap.source_file,
+                )
+            if want_scope:
+                for sel in alert.informed_entity:
+                    trip = sel.trip if sel.HasField("trip") else None
+                    emitted += 1
+                    out.scopes.add(
+                        self.mode,
+                        self.feed,
+                        ent.id,
+                        digest,
+                        sel.agency_id or None,
+                        sel.route_id or None,
+                        sel.route_type if sel.HasField("route_type") else None,
+                        sel.stop_id or None,
+                        (trip.trip_id or None) if trip else None,
+                        (trip.start_date or None) if trip else None,
+                        sel.direction_id
+                        if sel.HasField("direction_id")
+                        else None,
+                        snap.fetched_at,
+                        obs_date,
+                        snap.source_file,
+                    )
+        if want:
+            for alert_id in sorted(set(self.prev_alerts) - set(current)):
+                emitted += 1
+                out.alerts.add(
+                    self.mode,
+                    self.feed,
+                    alert_id,
+                    "removed",
+                    *([None] * 10),
+                    observed,
+                    snap.fetched_at,
+                    obs_date,
+                    snap.source_file,
+                )
+        self.prev_alerts = current
         return emitted
 
     def _vehicles(self, snap: Snapshot, out: Rows | None, emit) -> int:

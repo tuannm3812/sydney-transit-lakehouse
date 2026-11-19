@@ -15,7 +15,7 @@ Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-o
 | 3 | **Replay from S3** (read the hourly tars, D-026) and `worker verify-replay` for the gate | planned | nothing to build; a real run needs item 2's data |
 | 4 | **Latency report**: fetch → committed row, p50/p95 per feed, against the 60 s SLA | planned | the worker running live |
 | 5 | **Static timetable versions** (`silver.timetable_*`, D-029): one version per landed zip, stop times stored once per distinct trip pattern | built 19 Nov, synthetic tests; real zip to measure | a static zip from S3 for a real run |
-| 6 | **Service Alerts** (`silver.alert`, `silver.alert_scope`, SCD2 by alert version) with a TfNSW-tolerant proto (D-020) | planned | nothing |
+| 6 | **Service Alerts** (`silver.alert`, `silver.alert_scope`, type-2 history by content hash; TfNSW's field 7 repaired, D-030) | built 19 Nov, synthetic tests | a real alerts hour for a dry run |
 | 7 | **Compaction** of small files by closed hour, and a test of per-trip delay encoding to shrink bus `stop_prediction` | planned | item 2's measurements |
 | 8 | **Deploy the worker** on the collector host (`docker compose --profile worker up -d worker`) | ready after item 2 | **the Phase 0 gate (24–25 Nov)** and Mike's SSH approval |
 | 9 | **Iceberg warehouse on S3** (prefix `lakehouse/` in the raw bucket; the role needs delete on that prefix only, for expiry and compaction) | proposed | Mike approves the IAM change |
