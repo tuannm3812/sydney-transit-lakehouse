@@ -5,6 +5,12 @@
     python -m transit_lakehouse.worker expire --older-than 24h
     python -m transit_lakehouse.worker status          # rows, watermarks
 
+    python -m transit_lakehouse.worker --data-dir /tmp/r replay \\
+        --bucket B --feed buses_tripupdates --start 2026-11-17T00 \\
+        --end 2026-11-18T00
+    python -m transit_lakehouse.worker verify --other /tmp/r \\
+        --feed buses_tripupdates --start 2026-11-17T00 --end 2026-11-18T00
+
 Reads ``DATA_DIR`` (raw snapshots in, ``lakehouse/`` out) and
 ``FEEDS_CONFIG``. Needs no TfNSW key: it never calls the API.
 """
@@ -47,6 +53,40 @@ def _status(catalog) -> str:
     return "\n".join(lines)
 
 
+def _replay_or_verify(args, catalog, feeds) -> int:
+    from transit_lakehouse.worker import replay as rp
+
+    start, end = rp.parse_hour(args.start), rp.parse_hour(args.end)
+    if args.cmd == "verify":
+        other = open_catalog(args.other)
+        compared, diffs = rp.verify(catalog, other, feeds, start, end)
+        for d in diffs:
+            print(
+                f"DIFF {d.table} {d.feed} {d.hour}: "
+                f"{d.left[0]:,} rows vs {d.right[0]:,} rows"
+            )
+        print(
+            f"{compared} table-hours compared, {len(diffs)} differ"
+            + ("" if diffs else ": identical")
+        )
+        return 1 if diffs else 0
+    if args.bucket:
+        import boto3  # the offload extra; credentials from the role
+
+        source = rp.S3Tars(boto3.client("s3"), args.bucket)
+    else:
+        source = rp.LocalTars(args.tars)
+    with single_run(args.data_dir):
+        stats = rp.replay(source, feeds, start, end, args.data_dir, catalog)
+    print(
+        f"replayed {stats.hours} hours, {stats.files} files: "
+        + ", ".join(f"{k} +{v:,}" for k, v in stats.rows.items() if v)
+    )
+    for key in stats.missing_hours:
+        print(f"missing {key}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
@@ -72,6 +112,26 @@ def main(argv: list[str] | None = None) -> int:
     exp = sub.add_parser("expire", help="expire old Iceberg snapshots")
     exp.add_argument("--older-than", default="24h")
     sub.add_parser("status", help="rows and watermarks per table")
+    rep = sub.add_parser(
+        "replay",
+        help="rebuild realtime tables from offloaded hour tars into "
+        "--data-dir (use an empty folder)",
+    )
+    src = rep.add_mutually_exclusive_group(required=True)
+    src.add_argument("--bucket", help="S3 offload bucket (D-026)")
+    src.add_argument(
+        "--tars", type=Path, help="folder laid out like the bucket"
+    )
+    ver = sub.add_parser(
+        "verify", help="compare --data-dir's tables with --other's"
+    )
+    ver.add_argument("--other", type=Path, required=True)
+    for p in (rep, ver):
+        p.add_argument("--feed", action="append", required=True)
+        p.add_argument(
+            "--start", required=True, help="UTC hour, 2026-11-17T21"
+        )
+        p.add_argument("--end", required=True, help="UTC hour, exclusive")
     args = parser.parse_args(argv)
 
     # Arrow's default mimalloc pool keeps freed memory, so peak use only
@@ -96,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
     feeds = list(load_feeds(args.feeds))
     if args.feed:
         feeds = [f for f in feeds if f.name in set(args.feed)]
+
+    if args.cmd in ("replay", "verify"):
+        return _replay_or_verify(args, catalog, feeds)
+
     kwargs = {"max_rows": args.max_rows, "max_files": args.max_files}
     with single_run(args.data_dir):
         if args.once:

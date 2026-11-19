@@ -4,7 +4,7 @@
 
 Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-on worker, then measures Redpanda + Spark Structured Streaming on the same feeds as a benchmark. Work starts now on branches, against tests and captured data, while the Phase 0 capture run finishes. Nothing in Phase 1 touches the running collector.
 
-**Gate:** a replay of the raw snapshots for a full day rebuilds every silver table row for row (ignoring the ingest timestamp), and p95 latency from fetch to committed row is within 60 s on the live worker.
+**Gate:** `worker replay` of a full day from S3 into an empty lakehouse, then `worker verify` against the live tables, reports every table-hour identical (ignoring the ingest timestamp), and p95 latency from fetch to committed row is within 60 s on the live worker.
 
 ## Work items
 
@@ -12,7 +12,7 @@ Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-o
 |---|---|---|---|
 | 1 | **Light worker core** (`transit_lakehouse.worker`): tolerant decode, `bronze.snapshot`, `silver.vehicle_position`, `silver.stop_prediction`, `silver.trip_status`, watermarks, snapshot expiry | PR open | nothing |
 | 2 | **Real-data dry run**: run item 1 on a captured peak hour and an overnight hour; record rows, Parquet size, memory and seconds per snapshot | done 19 Nov (docs/reports/worker-dryrun-20261119.md); rerun after the memory fix | nothing |
-| 3 | **Replay from S3** (read the hourly tars, D-026) and `worker verify-replay` for the gate | planned | nothing to build; a real run needs item 2's data |
+| 3 | **Replay from S3** (`worker replay --bucket … --start … --end …` reads the hourly tars one hour at a time, D-026) and `worker verify --other …` (row count and order-free digest per table, feed and hour) for the gate | built 19 Nov, tested against tars made by the offload code | the worker live on the server, then a day replayed from S3 |
 | 4 | **Latency report**: fetch → committed row, p50/p95 per feed, against the 60 s SLA | planned | the worker running live |
 | 5 | **Static timetable versions** (`silver.timetable_*`, D-029): one version per landed zip, stop times stored once per distinct trip pattern | built 19 Nov, synthetic tests; real zip to measure | a static zip from S3 for a real run |
 | 6 | **Service Alerts** (`silver.alert`, `silver.alert_scope`, type-2 history by content hash; TfNSW's field 7 repaired, D-030) | built 19 Nov, synthetic tests | a real alerts hour for a dry run |
