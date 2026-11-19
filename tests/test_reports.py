@@ -14,18 +14,16 @@ from transit_lakehouse.reports.render import (
 FRONT = """---
 id: R9-01
 title: A test report
-subtitle: What it tests
+subtitle: What it tests.
 phase: 1
 status: Draft
 verdict: Info
 date: 2026-11-19
+window: 1 Nov 2026 UTC
 commit: abc1234
 environment: CI
 decisions: D-001
 evidence: none
-highlights:
-  - 1 | one
-  - 2 | two
 ---
 
 # A test report
@@ -45,13 +43,24 @@ BODY = "".join(
 
 def test_valid_report_parses_and_renders():
     body = BODY.replace("## Summary\n\nText.", "## Summary\n\n> Answer.")
-    rep = parse(FRONT + body + "```chart\ntitle: T\nA 10:00: 5\n```\n")
+    extra = (
+        "```chart\ntitle: T\nBus 10:00: 5\nOther: 3\n```\n"
+        "```flow\nraw | A | a\nsilver | B | b\n```\n"
+        "| Feed | Rows | Check |\n|---|---:|---|\n"
+        "| `buses_vehiclepos` | **5** | Pass |\n| All feeds | 5 | |\n"
+    )
+    rep = parse(FRONT + body + extra)
     assert rep.meta["id"] == "R9-01"
-    assert rep.highlights == [("1", "one"), ("2", "two")]
     assert "# A test report" not in rep.body
     html = to_html(rep)
     assert 'class="answer"' in html
-    assert "<svg" in html and "A 10:00" in html
+    assert "<svg" in html and "Bus 10:00" in html
+    assert "#00B5EF" in html and "#9AA3AD" in html  # mode bar, neutral bar
+    assert 'class="flow"' in html and "step silver" in html
+    assert 'class="chip st-good">Pass' in html
+    assert 'class="total"' in html and 'class="hl"' in html
+    assert 'class="feed"' in html
+    assert "Phase 1 · Build the lakehouse" in html
 
 
 @pytest.mark.parametrize(
@@ -59,7 +68,9 @@ def test_valid_report_parses_and_renders():
     [
         (("verdict: Info\n", ""), "missing verdict"),
         (("status: Draft", "status: Done"), "status must be"),
-        (("  - 2 | two\n", ""), "two to four"),
+        (("title: A test report", "title: " + "word " * 9), "8 words"),
+        (("subtitle: What it tests.", "subtitle: No full stop"), "subtitle"),
+        (("evidence: none", "evidence: none\nextra: x"), "unknown"),
         (("## Limits", "## Caveats"), "sections must be"),
         (("Text.", "Host 10.1.2.3."), "IP address"),
         (("Text.", "Mail a@b.com."), "email"),
