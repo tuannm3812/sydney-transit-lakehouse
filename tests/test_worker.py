@@ -329,3 +329,14 @@ def test_arrow_types_match_iceberg(data_dir: Path) -> None:
     assert data.schema.field("arrival_time").type == pa.timestamp(
         "us", tz="UTC"
     )
+
+
+def test_warehouse_lands_inside_a_path_with_spaces(tmp_path: Path) -> None:
+    # Mike's clone lives under "3. Personal"; a file:// URI turned the
+    # space into a literal "%20" folder beside the repo.
+    data_dir = tmp_path / "3. Personal" / "data"
+    _land_example(data_dir)
+    run_once(data_dir, open_catalog(data_dir, env={}), [TU_FEED])
+    warehouse = data_dir / "lakehouse" / "warehouse"
+    assert list(warehouse.rglob("*.parquet"))
+    assert not list(tmp_path.rglob("*%20*"))

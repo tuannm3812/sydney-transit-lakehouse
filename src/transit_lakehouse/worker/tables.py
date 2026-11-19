@@ -162,7 +162,9 @@ def open_catalog(
         f"sqlite:///{(root / 'catalog.db').resolve()}"
     )
     warehouse = env.get("LAKEHOUSE_WAREHOUSE") or (
-        (root / "warehouse").resolve().as_uri()
+        # A plain path, not a file:// URI: as_uri() percent-encodes
+        # spaces and pyarrow then writes to a literal "%20" folder.
+        str((root / "warehouse").resolve())
     )
     return SqlCatalog("transit", uri=uri, warehouse=warehouse)
 

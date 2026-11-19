@@ -11,7 +11,7 @@ Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-o
 | # | Item | Status | Waits for |
 |---|---|---|---|
 | 1 | **Light worker core** (`transit_lakehouse.worker`): tolerant decode, `bronze.snapshot`, `silver.vehicle_position`, `silver.stop_prediction`, `silver.trip_status`, watermarks, snapshot expiry | PR open | nothing |
-| 2 | **Real-data dry run**: run item 1 on a captured peak hour and an overnight hour; record rows, Parquet size, memory and seconds per snapshot in `docs/reports/` | next | a copy of a few hours from S3 (Mike) |
+| 2 | **Real-data dry run**: run item 1 on a captured peak hour and an overnight hour; record rows, Parquet size, memory and seconds per snapshot | done 19 Nov (docs/reports/worker-dryrun-20261119.md); rerun after the memory fix | nothing |
 | 3 | **Replay from S3** (read the hourly tars, D-026) and `worker verify-replay` for the gate | planned | nothing to build; a real run needs item 2's data |
 | 4 | **Latency report**: fetch → committed row, p50/p95 per feed, against the 60 s SLA | planned | the worker running live |
 | 5 | **Static timetable versions** (`silver.timetable_*`, one version per zip sha256, streamed in chunks so the 287 MB zip fits the host) | planned | nothing |
@@ -47,11 +47,11 @@ It reads `DATA_DIR` (default `data`), writes the catalog and warehouse under `DA
 
 ## What must wait for the Phase 0 gate
 
-- **Deploying the worker on the collector host.** It shares 2 GB of memory and the disk with the collector. A bus trip-update backlog peaked at about 600 MB in a synthetic test, so the compose service is capped at 900 MB and one CPU, and sits behind the `worker` profile so a routine `docker compose up` does not start it. Starting it during the capture run would put the gate at risk for no gain: the raw files are kept, so the worker can catch up afterwards.
+- **Deploying the worker on the collector host.** It shares 2 GB of memory and the disk with the collector. A real 8 am bus backlog peaked at 941 MB before the memory fix (docs/reports/worker-dryrun-20261119.md), so the worker now flushes every 50,000 rows and uses the system allocator, and the compose service is capped at 900 MB and one CPU, and sits behind the `worker` profile so a routine `docker compose up` does not start it. Starting it during the capture run would put the gate at risk for no gain: the raw files are kept, so the worker can catch up afterwards.
 - **Anything on the server**, including a one-off run, needs Mike's approval naming the action, target and commit.
 
 ## Open risks
 
-- **Bus `stop_prediction` volume.** At peak about half of all bus stop predictions change every 30 s (docs/reports/profile-20261118.md), which is roughly 80,000 rows a snapshot and tens of millions of rows a day. Item 2 measures the real Parquet size; item 7 tests storing a per-trip delay change instead of every downstream stop.
+- **Bus `stop_prediction` volume.** At peak about half of all bus stop predictions change every 30 s (docs/reports/profile-20261118.md), measured at about 83,000 rows a snapshot and 9.9 million rows (84.6 MB of Parquet) in the 8 am hour, roughly 1.2 GB a day (docs/reports/worker-dryrun-20261119.md); item 7 tests storing a per-trip delay change instead of every downstream stop.
 - **Small files.** One commit a minute writes about 1,440 small files per table partition a day until compaction (item 7) lands. Reads stay correct, just slower.
 - **Seeding after a prune.** Each batch diffs against the file before it. If that file was pruned locally (D-026 keeps 3 days), the first file of the batch is written in full and the run logs a warning. This only happens if the worker falls more than 3 days behind.

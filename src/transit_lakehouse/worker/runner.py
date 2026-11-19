@@ -42,9 +42,11 @@ TABLES_FOR_KIND: dict[str, tuple[str, ...]] = {
     "vehicle_positions": ("bronze.snapshot", "silver.vehicle_position"),
 }
 # Flush to Iceberg when this many rows are buffered, so a backlog of
-# bus trip updates (tens of thousands of changed rows per snapshot at
-# peak) never outgrows the 2 GB host.
-DEFAULT_MAX_ROWS = 100_000
+# bus trip updates never outgrows the 2 GB host. A real 8 am peak
+# snapshot holds about 84,000 changed stop predictions, so at peak this
+# flushes after every snapshot. At 100,000 rows, peak memory reached
+# 941 MB on a real peak hour (docs/reports/worker-dryrun-20261119.md).
+DEFAULT_MAX_ROWS = 50_000
 
 
 @dataclass

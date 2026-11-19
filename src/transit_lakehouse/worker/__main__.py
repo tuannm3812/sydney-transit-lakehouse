@@ -18,6 +18,8 @@ import signal
 import sys
 from pathlib import Path
 
+import pyarrow as pa
+
 from transit_lakehouse.checks.manifest import parse_window
 from transit_lakehouse.collector.config import load_feeds
 from transit_lakehouse.worker.runner import (
@@ -73,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="rows and watermarks per table")
     args = parser.parse_args(argv)
 
+    # Arrow's default mimalloc pool keeps freed memory, so peak use only
+    # grows over a backlog; the system allocator measured ~25% lower.
+    pa.set_memory_pool(pa.system_memory_pool())
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
