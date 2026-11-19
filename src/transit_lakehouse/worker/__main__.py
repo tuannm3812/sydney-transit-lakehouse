@@ -24,7 +24,6 @@ from transit_lakehouse.checks.manifest import parse_window
 from transit_lakehouse.collector.config import load_feeds
 from transit_lakehouse.worker.runner import (
     DEFAULT_MAX_ROWS,
-    buildable,
     expire,
     run_loop,
     run_once,
@@ -94,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name}: expired {n} snapshots")
         return 0
 
-    feeds = buildable(load_feeds(args.feeds))
+    feeds = list(load_feeds(args.feeds))
     if args.feed:
         feeds = [f for f in feeds if f.name in set(args.feed)]
     kwargs = {"max_rows": args.max_rows, "max_files": args.max_files}

@@ -134,18 +134,23 @@ SORT_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def schema_for(columns: tuple[str, ...]) -> Schema:
+def schema_for(
+    columns: tuple[str, ...],
+    types: Mapping[str, IcebergType] = TYPES,
+) -> Schema:
     return Schema(
         *(
-            NestedField(i, name, TYPES[name], required=False)
+            NestedField(i, name, types[name], required=False)
             for i, name in enumerate(columns, start=1)
         )
     )
 
 
-def spec_for(schema: Schema) -> PartitionSpec:
+def spec_for(
+    schema: Schema, parts: tuple[str, ...] = ("obs_date", "mode")
+) -> PartitionSpec:
     fields = []
-    for i, name in enumerate(("obs_date", "mode")):
+    for i, name in enumerate(parts):
         source = schema.find_field(name).field_id
         fields.append(
             PartitionField(source, 1000 + i, IdentityTransform(), name)
@@ -171,20 +176,27 @@ def open_catalog(
     return SqlCatalog("transit", uri=uri, warehouse=warehouse)
 
 
+def create_table(
+    catalog: Catalog,
+    name: str,
+    schema: Schema,
+    parts: tuple[str, ...] = ("obs_date", "mode"),
+) -> Table:
+    with contextlib.suppress(NamespaceAlreadyExistsError):
+        catalog.create_namespace(name.split(".")[0])
+    return catalog.create_table_if_not_exists(
+        name,
+        schema=schema,
+        partition_spec=spec_for(schema, parts),
+        properties=TABLE_PROPERTIES,
+    )
+
+
 def ensure_tables(catalog: Catalog) -> dict[str, Table]:
-    out: dict[str, Table] = {}
-    for name, columns in TABLES.items():
-        namespace = name.split(".")[0]
-        with contextlib.suppress(NamespaceAlreadyExistsError):
-            catalog.create_namespace(namespace)
-        schema = schema_for(columns)
-        out[name] = catalog.create_table_if_not_exists(
-            name,
-            schema=schema,
-            partition_spec=spec_for(schema),
-            properties=TABLE_PROPERTIES,
-        )
-    return out
+    return {
+        name: create_table(catalog, name, schema_for(columns))
+        for name, columns in TABLES.items()
+    }
 
 
 def watermarks(table: Table) -> dict[str, str]:

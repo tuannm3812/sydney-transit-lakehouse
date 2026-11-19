@@ -9,8 +9,9 @@ once with its new rows and watermarks. A crash at any point is safe:
   so the next run decodes from the lowest watermark and emits rows only
   to the tables that do not hold them yet.
 
-Only realtime vehicle positions and trip updates are built here. Service
-Alerts and the static timetable get their own models (docs/9_phase1.md).
+Realtime vehicle positions and trip updates are built here; then at most
+one new static timetable zip per run (timetable.py). Service Alerts get
+their own model (docs/9_phase1.md).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from transit_lakehouse.collector.config import Feed
 from transit_lakehouse.worker.decode import landed_after, read_snapshot
 from transit_lakehouse.worker.silver import FeedDiffer, Rows
 from transit_lakehouse.worker.tables import commit, ensure_tables, watermarks
+from transit_lakehouse.worker.timetable import VersionStats, run_timetable
 
 log = logging.getLogger(__name__)
 
@@ -55,14 +57,21 @@ class RunStats:
     commits: int = 0
     rows: dict[str, int] = field(default_factory=dict)
     unseeded: list[str] = field(default_factory=list)
+    timetables: list[VersionStats] = field(default_factory=list)
     seconds: float = 0.0
 
     def summary(self) -> str:
         parts = ", ".join(f"{k} +{v:,}" for k, v in self.rows.items() if v)
-        return (
+        text = (
             f"{self.files} files, {self.commits} commits in "
             f"{self.seconds:.1f} s" + (f": {parts}" if parts else "")
         )
+        for tt in self.timetables:
+            text += (
+                f"; timetable {tt.version}: {tt.trips:,} trips, "
+                f"{tt.new_patterns:,} new of {tt.patterns:,} patterns"
+            )
+        return text
 
 
 def buildable(feeds: Iterable[Feed]) -> list[Feed]:
@@ -148,6 +157,10 @@ def run_once(
                 flush()
                 table_marks = {n: marks[n].get(feed.name, "") for n in names}
     flush()
+    if any(f.kind == "static_gtfs" for f in feeds):
+        # At most one zip per run: a ~300 MB timetable takes a while,
+        # and the realtime tables should not wait behind several.
+        stats.timetables = run_timetable(data_dir, catalog, max_versions=1)
     stats.seconds = time.monotonic() - started
     return stats
 
