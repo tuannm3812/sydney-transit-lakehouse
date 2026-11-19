@@ -16,7 +16,7 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 
 ## Evidence locations
 
-- `docs/reports/`: generated capture and quota reports. Any claim about capture rate, quota or volume traces to one of these.
+- `docs/reports/`: generated capture and quota reports, and phase reports (`R<phase>-<nn>`). Any claim about capture rate, quota or volume traces to one of these. Phase reports follow [docs/reports/README.md](docs/reports/README.md) and render to PDF with `python -m transit_lakehouse.reports`.
 - `data/manifest/`: every poll attempt (gitignored, lives on the collector host).
 
 ## Open risks
