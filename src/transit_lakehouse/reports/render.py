@@ -11,6 +11,7 @@ Chrome.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -368,7 +369,73 @@ def _style_tables(tokens) -> None:
                     "strong_close",
                 ):
                     tok.attrSet("class", "hl")
+        _scale_columns(tokens, i, end)  # after total rows are marked
         i = end + 1
+
+
+SCALE_STEPS = 5
+
+
+def _cell_number(text: str) -> float | None:
+    match = re.search(r"-?\d[\d,]*(?:\.\d+)?", text)
+    return float(match.group(0).replace(",", "")) if match else None
+
+
+def _scale_columns(tokens, start: int, end: int) -> None:
+    """Colour-scale every column whose header is in *italics*.
+
+    Light to dark in one hue, by value within the column; total rows
+    are left out (README section 5)."""
+    cols: list[int] = []
+    col = -1
+    for j in range(start, end):
+        tok = tokens[j]
+        if tok.type == "tr_open":
+            col = -1
+        if tok.type == "th_open":
+            col += 1
+            kids = [
+                c
+                for c in tokens[j + 1].children or []
+                if not (c.type == "text" and not c.content)
+            ]
+            if kids and (kids[0].type, kids[-1].type) == (
+                "em_open",
+                "em_close",
+            ):
+                cols.append(col)
+                tok.attrSet("class", "scale")
+                tokens[j + 1].children = kids[1:-1]
+    if not cols:
+        return
+    cells: dict[int, list[tuple[object, float]]] = {c: [] for c in cols}
+    total = False
+    for j in range(start, end):
+        tok = tokens[j]
+        if tok.type == "tr_open":
+            col, total = -1, "total" in (tok.attrGet("class") or "")
+        elif tok.type == "td_open":
+            col += 1
+            if col in cells and not total:
+                value = _cell_number(tokens[j + 1].content)
+                if value is not None:
+                    cells[col].append((tok, value))
+    for found in cells.values():
+        if len(found) < 2:
+            continue
+        low = min(v for _, v in found)
+        high = max(v for _, v in found)
+        if low > 0 and high / low >= 20:  # wide range: scale by log
+            found = [(t, math.log10(v)) for t, v in found]
+            low, high = math.log10(low), math.log10(high)
+        for tok, value in found:
+            step = (
+                0
+                if high == low
+                else round((value - low) / (high - low) * (SCALE_STEPS - 1))
+            )
+            old = tok.attrGet("class")
+            tok.attrSet("class", f"{old} s{step}" if old else f"s{step}")
 
 
 def _markdown(body: str) -> str:
@@ -436,7 +503,8 @@ class ReportAssets(Assets):
 
 CSS = """
 @page{size:A4;margin:16mm 17mm 18mm;
-  @bottom-left{content:var(--foot);font:7.5pt var(--sans);color:#6B7480}
+  @bottom-left{content:var(--foot);font:7.5pt var(--sans);color:#6B7480;
+    width:85%}
   @bottom-right{content:"Page " counter(page) " of " counter(pages);
     font:7.5pt var(--sans);color:#6B7480}}
 :root{--ink:#1B2430;--body:#3A4350;--muted:#6B7480;--hair:#E1E5E9;
@@ -473,16 +541,20 @@ h1{color:var(--ink);font-size:23pt;line-height:1.12;margin:16px 0 4px;
   letter-spacing:.05em}
 .track .done{border-color:var(--good);color:var(--good)}
 .track .now{border-color:var(--blue);color:var(--blue);font-weight:700}
-/* metadata table */
+/* metadata: one strip of key facts, then labelled lines */
+.facts{display:grid;grid-template-columns:repeat(4,1fr);
+  border-top:2px solid var(--ink);border-bottom:1px solid var(--hair)}
+.facts div{padding:6px 10px 7px 0}
+.facts dt,.meta th{font-size:7.4pt;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted);font-weight:700}
+.facts dd{margin:2px 0 0;color:var(--ink);font-size:9pt}
 table.meta{width:100%;border-collapse:collapse;margin:0 0 16px;
-  font-size:8.8pt;border-top:2px solid var(--ink);
-  border-bottom:1px solid var(--rule)}
-table.meta th{width:17%;text-align:left;font-weight:700;color:var(--accent);
-  background:var(--accent-fill);padding:5px 8px;font-size:7.6pt;
-  text-transform:uppercase;letter-spacing:.05em;vertical-align:top;
-  border-bottom:1px solid #fff}
-table.meta td{padding:5px 10px;color:var(--ink);vertical-align:top;
+  font-size:8.6pt}
+table.meta th{width:17%;text-align:left;padding:5px 8px 5px 0;
+  vertical-align:top}
+table.meta td{padding:5px 0;color:var(--ink);vertical-align:top;
   border-bottom:1px solid var(--hair)}
+table.meta tr th{border-bottom:1px solid var(--hair)}
 .chip{display:inline-block;padding:0 8px;border-radius:9px;
   font-size:8pt;font-weight:700;line-height:1.6}
 .chip.Final,.chip.v-pass,.chip.st-good{background:var(--good-fill);
@@ -525,7 +597,7 @@ pre{background:var(--card);padding:8px 10px;border-radius:6px;
 pre code{background:none;padding:0}
 blockquote.answer{margin:4px 0 12px;background:var(--band);color:#fff;
   border-radius:6px;padding:12px 16px 12px 18px;font-size:11pt;
-  line-height:1.45;border-left:5px solid var(--accent)}
+  line-height:1.45}
 blockquote.answer p{margin:0}
 blockquote.answer strong{color:#F3D9A4}
 blockquote:not(.answer){margin:0 0 8px;padding:6px 12px;
@@ -542,8 +614,16 @@ table.t tbody tr:nth-child(even) td{background:var(--zebra)}
 table.t tr{break-inside:avoid}
 table.t tr.total td{font-weight:700;color:var(--ink);background:#fff;
   border-top:1.5px solid var(--ink);border-bottom:none}
-table.t td.hl{background:var(--accent-fill)!important;
-  box-shadow:inset 3px 0 0 var(--accent)}
+table.t td.hl{background:var(--accent-fill)!important;color:var(--ink)}
+/* colour scale: one hue, light to dark (Viridis blue) */
+table.t td.s0{background:#F3F6FA!important}
+table.t td.s1{background:#E1E8F2!important}
+table.t td.s2{background:#C9D6E9!important}
+table.t td.s3{background:#ADC1DD!important}
+table.t td.s4{background:#8FA9CF!important;color:var(--ink)}
+table.t th.scale{background-image:linear-gradient(90deg,#F3F6FA,#8FA9CF);
+  background-size:100% 3px;background-position:bottom;
+  background-repeat:no-repeat}
 table.kv thead{display:none}
 table.kv{border-top:2px solid var(--ink)}
 table.kv td:first-child{width:30%;color:var(--muted);font-weight:700;
@@ -602,32 +682,32 @@ def to_html(report: Report, assets: Assets | None = None) -> str:
             f'<img class="uts" src="{u}" '
             'alt="University of Technology Sydney">'
         )
-    foot = f"{m['id']} · {m['title']}".replace('"', "'")
+    foot = (
+        f"{m['id']} · {m['title']} · {m['status']} · {m['date']} · "
+        "Data © State of NSW (Transport for NSW)"
+    )
     status = f'<span class="chip {m["status"]}">{m["status"]}</span>'
     verdict = (
         f'<span class="chip v-{_slug(m["verdict"])}">'
         f"{escape(m['verdict'])}</span>"
     )
-    phase = f"Phase {m['phase']} · {PHASES[m['phase']]}"
-    rows = [
-        ("Report", escape(m["id"]), "Phase", escape(phase)),
-        ("Status", status, "Verdict", verdict),
-        (
-            "Date",
-            escape(m["date"]),
-            "Commit",
-            f"<code>{escape(m['commit'])}</code>",
-        ),
-        ("Data window", escape(m["window"]), None, None),
-        ("Environment", escape(m["environment"]), None, None),
-        ("Decisions", escape(m["decisions"]), None, None),
-        ("Evidence", escape(m["evidence"]), None, None),
+    facts = [
+        ("Status", status),
+        ("Verdict", verdict),
+        ("Date", escape(m["date"])),
+        ("Commit", f"<code>{escape(m['commit'])}</code>"),
+    ]
+    facts_html = "".join(
+        f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts
+    )
+    lines = [
+        ("Data window", m["window"]),
+        ("Environment", m["environment"]),
+        ("Decisions", m["decisions"]),
+        ("Evidence", m["evidence"]),
     ]
     meta_html = "".join(
-        f"<tr><th>{k1}</th><td>{v1}</td><th>{k2}</th><td>{v2}</td></tr>"
-        if k2
-        else f'<tr><th>{k1}</th><td colspan="3">{v1}</td></tr>'
-        for k1, v1, k2, v2 in rows
+        f"<tr><th>{k}</th><td>{escape(v)}</td></tr>" for k, v in lines
     )
     return f"""<!doctype html>
 <html lang="en-AU"><head><meta charset="utf-8">
@@ -641,6 +721,7 @@ def to_html(report: Report, assets: Assets | None = None) -> str:
 <h1>{escape(m["title"])}</h1>
 <p class="sub">{escape(m["subtitle"])}</p>
 {_track(m["phase"])}
+<dl class="facts">{facts_html}</dl>
 <table class="meta">{meta_html}</table>
 <main>{_markdown(report.body)}</main>
 </body></html>

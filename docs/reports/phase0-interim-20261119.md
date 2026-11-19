@@ -76,15 +76,15 @@ Freshness is the fetch time minus the feed's own timestamp. Service Alerts are p
 | `metro_tripupdates` | 2,881 | 0 | 0 |
 | `service_alerts` | 1,410 | 514 | 0 |
 | `static_gtfs` | 6 | 3 | 0 |
-| All feeds | **27,339** | 519 | 0 |
+| All feeds | 27,339 | 519 | 0 |
 
 An unchanged poll returned the same payload as the one before and was not stored again.
 
 ### Data volume
 
-| Feed | Median snapshot | Received a day | Stored a day |
+| Feed | Median snapshot | *Received a day* | *Stored a day* |
 |---|---:|---:|---:|
-| `buses_tripupdates` | 4.69 MB | 11,849 MB | **3,376 MB** |
+| `buses_tripupdates` | 4.69 MB | 11,849 MB | 3,376 MB |
 | `static_gtfs` | 286.25 MB | 860 MB | 860 MB |
 | `buses_vehiclepos` | 288 kB | 1,584 MB | 401 MB |
 | `sydneytrains_tripupdates` | 219 kB | 558 MB | 85 MB |
@@ -123,7 +123,7 @@ The new feeds are positions and trip updates for Inner West light rail (`/v2`) a
 
 The share of rows that differ from the previous snapshot of the same feed. It sets how much a change-only table saves (R1-01).
 
-| Hour (UTC) | Sydney | Feed | Rows per snapshot | Changed |
+| Hour (UTC) | Sydney | Feed | Rows per snapshot | *Changed* |
 |---|---|---|---:|---:|
 | 21:00, 17 Nov | 8 am | `buses_tripupdates` | 169,708 | 49.0% |
 | 21:00, 17 Nov | 8 am | `buses_vehiclepos` | 3,504 | 84.0% |

@@ -46,8 +46,10 @@ def test_valid_report_parses_and_renders():
     extra = (
         "```chart\ntitle: T\nBus 10:00: 5\nOther: 3\n```\n"
         "```flow\nraw | A | a\nsilver | B | b\n```\n"
-        "| Feed | Rows | Check |\n|---|---:|---|\n"
-        "| `buses_vehiclepos` | **5** | Pass |\n| All feeds | 5 | |\n"
+        "| Feed | Rows | *Size* | Check |\n|---|---:|---:|---|\n"
+        "| `buses_vehiclepos` | **5** | 1 MB | Pass |\n"
+        "| `metro_vehiclepos` | 4 | 9 MB | Pass |\n"
+        "| All feeds | 9 | 10 MB | |\n"
     )
     rep = parse(FRONT + body + extra)
     assert rep.meta["id"] == "R9-01"
@@ -60,7 +62,10 @@ def test_valid_report_parses_and_renders():
     assert 'class="chip st-good">Pass' in html
     assert 'class="total"' in html and 'class="hl"' in html
     assert 'class="feed"' in html
-    assert "Phase 1 · Build the lakehouse" in html
+    assert 'class="scale"' in html
+    assert 'class="s0"' in html and 'class="s4"' in html
+    assert html.count(' s4"') + html.count('"s4"') == 1  # total not scaled
+    assert "Build the lakehouse" in html  # phase track
 
 
 @pytest.mark.parametrize(

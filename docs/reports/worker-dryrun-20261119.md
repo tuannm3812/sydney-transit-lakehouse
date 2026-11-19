@@ -87,7 +87,7 @@ D-028, at 4f151a2. Each stop now stores its delay minus the trip's delay, so a w
 | `silver.stop_prediction` rows | 10,071,845 | 5,632,675 |
 | `silver.stop_prediction` Parquet | 95.0 MB | 59.3 MB |
 | `silver.trip_status` rows | 142,828 | 443,100 |
-| All tables, Parquet | 108.1 MB | **76.6 MB** |
+| All tables, Parquet | 108.1 MB | 76.6 MB |
 | Wall time | 62.1 s | 54.8 s |
 | Peak memory | 772 MB | 765 MB |
 
@@ -128,7 +128,7 @@ The zip has no `feed_info.txt`, so the publisher and feed-version columns are em
 
 ### Peak memory
 
-| Run | Commit | Peak memory | Under the cap |
+| Run | Commit | *Peak memory* | Under the cap |
 |---|---|---:|---|
 | First run | 4afecb6 | 941 MB | No |
 | Memory fix | dc91b4d | 772 MB | Yes |

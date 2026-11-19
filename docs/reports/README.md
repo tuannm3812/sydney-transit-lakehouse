@@ -33,22 +33,24 @@ Generated evidence keeps its generated layout; phase reports cite it. Only phase
 
 The renderer refuses a longer title or subtitle. Below the front block, repeat the title as a `#` line so the file reads well on GitHub; the PDF prints it once.
 
-## 3. Front block and metadata table
+## 3. Front block and metadata
 
-Every phase report starts with this block. Each field is one line; the renderer refuses a missing or unknown field. It becomes the metadata table under the title, in this order:
+Every phase report starts with this block. Each field is one line; the renderer refuses a missing or unknown field. Each field is printed once, in one place:
 
-| Field | Shown as | What to write |
+| Field | Shown in | What to write |
 |---|---|---|
-| `id` | Report | `R<phase>-<nn>` |
-| `phase` | Phase | the number only; the name is added (section 7) |
-| `status` | Status | `Draft`, `Interim`, `Final` or `Superseded` |
-| `verdict` | Verdict | `Pass`, `Pass with actions`, `Fail` or `Info` (no gate decided) |
-| `date` | Date | day finalised, `YYYY-MM-DD`, UTC |
-| `commit` | Commit | short hash of the code the numbers came from; several with what each covers |
-| `window` | Data window | the UTC period of the data measured, not when the report was written |
-| `environment` | Environment | where it ran: host, OS, Python and key library versions |
-| `decisions` | Decisions | the `D-NNN` rows the report rests on or changes |
-| `evidence` | Evidence | files and folders behind the numbers; gitignored ones say where they live |
+| `id` | header line and footer | `R<phase>-<nn>` |
+| `phase` | phase track (not repeated in the metadata) | the number only; the name is added (section 7) |
+| `status` | facts strip, footer | `Draft`, `Interim`, `Final` or `Superseded` |
+| `verdict` | facts strip | `Pass`, `Pass with actions`, `Fail` or `Info` (no gate decided) |
+| `date` | facts strip, footer | day finalised, `YYYY-MM-DD`, UTC |
+| `commit` | facts strip | short hash of the code the numbers came from; several with what each covers |
+| `window` | metadata lines: Data window | the UTC period of the data measured, not when the report was written |
+| `environment` | metadata lines: Environment | where it ran: host, OS, Python and key library versions |
+| `decisions` | metadata lines: Decisions | the `D-NNN` rows the report rests on or changes |
+| `evidence` | metadata lines: Evidence | files and folders behind the numbers; gitignored ones say where they live |
+
+The facts strip is one row of four short values (status, verdict, date, commit). The metadata lines below it are plain label and value rows with hairlines, no fills.
 
 ```
 ---
@@ -91,11 +93,18 @@ Every table follows one colour format, applied by the template. Authors only fol
 | Header row | the first row | light ochre fill, bold ink, ochre rule below |
 | Body rows | plain rows | white and light grey stripes |
 | Total row | first cell starts with `All ` or `Total` | bold, ink rule above, no stripe |
-| Headline cell | the whole cell in `**bold**`, at most one per table | ochre fill with an ochre bar on its left |
+| Headline cell | the whole cell in `**bold**`, at most one per table, never in a total row or a scaled column | light ochre fill, bold, no border |
+| Colour scale | the column header in `*italics*` | cells shaded light to dark blue by value, one hue (Viridis blue); a thin gradient under the header marks the column |
 | Status cell | exactly `Pass`, `Identical`, `Yes`, `Fail`, `Differs`, `No` or `Warn` | teal, red or ochre chip |
 | Feed name | `` `buses_tripupdates` `` | TfNSW mode-colour dot before the name |
 | Table name | `` `silver.trip_status` `` | tinted bronze, silver or gold by layer |
 | Key and value table | leave both header cells empty | grey labels on the left, no header row |
+
+Colour scales:
+
+- Use a scale only where comparing magnitudes down a column is the point (volume by feed, peak memory by run, share changed). At most two scaled columns per table.
+- The scale runs from the column's smallest to largest value in five steps; when the largest is 20 times the smallest or more it uses a log scale, so one large row does not wash out the rest.
+- Total rows and cells without a number are not shaded. Status colours (teal, red, ochre) are never used as a scale.
 
 Content rules:
 
@@ -140,14 +149,16 @@ check | Verify | replay compared with the live build
 | Page | A4 portrait, white, Google Sans 9.6 pt body, Google Sans Code for code |
 | Header | `94693 Big Data Engineering · Report R1-01` left, TfNSW then UTS logo right, ochre rule below |
 | Title block | title 23 pt, subtitle in grey, then the phase track: all phases, done in teal, this phase in blue, later in grey |
-| Metadata table | ochre label cells, values in ink, status and verdict as chips |
-| Answer band | the Summary's blockquote, dark band with an ochre edge |
+| Metadata | facts strip (status and verdict as chips, date, commit), then metadata lines with grey labels |
+| Answer band | the Summary's blockquote, plain dark band |
 | Accent | ochre `#896521` for numbers, rules and table headers in every phase |
 | Chips | Final and Pass teal; Interim, Pass with actions and Warn ochre; Fail red; Draft, Superseded and Info grey |
-| Footer | report id and title left, `Page n of N` right |
+| Footer | every page: `<id> · <title> · <status> · <date> · Data © State of NSW (Transport for NSW)` left, on one line, `Page n of N` right, small grey. No running header: the footer already names the report. |
 | Draft | a faint DRAFT watermark |
 
 Phase names, as on the deck's phase slides: 0 Collect first, 1 Build the lakehouse, 2 Reliability marts, 3 Ghost trips and bunching, 4 AI analyst.
+
+Footer rules: the footer carries only the id, title, status, date, data credit and page number, built from the front block, never typed by hand. It never holds a URL, a person's name or a commit. Status and date in the footer always match the front block, so a printed page can be dated on its own.
 
 ## 8. Writing rules
 
