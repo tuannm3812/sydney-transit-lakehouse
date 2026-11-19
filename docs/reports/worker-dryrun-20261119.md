@@ -30,3 +30,17 @@ A second `run --once` processed 0 files in 0.2 s, so reruns are no-ops. The samp
 - **Memory was too high for the 900 MB cap.** Fixed in the same PR: the flush threshold is now 50,000 rows (one peak snapshot), and the worker uses the system allocator instead of Arrow's default pool. On a synthetic peak backlog in the cloud test box, peak memory fell from 664 MB to 421 MB. **The real-data rerun at dc91b4d peaked at 772 MB** (from 941 MB), with identical row counts, 62 s wall time, and 396 commits instead of 202 (smaller flushes, so Parquet grew about 12% until compaction). That fits under the 900 MB cap but with little headroom, so per-trip delay encoding and compaction (item 7) come before deployment.
 - **Bug found:** with a space in the repo path (`3. Personal`), the warehouse went to a literal `3.%20Personal` folder beside the repo, because the default warehouse was a percent-encoded `file://` URI. Now it is a plain path, with a test; the rerun wrote inside the repo. The server path has no space, so EC2 was not affected.
 - Throughput: about 0.45 s per peak trip-update snapshot, well inside the 30 s poll interval.
+
+## Rerun with stop predictions relative to the trip delay (D-028, 4f151a2)
+
+Same three hours, same Mac, clean warehouse.
+
+| | dc91b4d | 4f151a2 |
+|---|---:|---:|
+| `silver.stop_prediction` rows / Parquet | 10,071,845 / 95.0 MB | **5,632,675 / 59.3 MB** |
+| `silver.trip_status` rows / Parquet | 142,828 / 3.4 MB | 443,100 / 7.9 MB |
+| All tables, Parquet | 107.1 MB | **76.6 MB (−28%)** |
+| Wall time | 62.1 s | 54.8 s |
+| Peak memory (max RSS) | 772 MB | 765 MB |
+
+`trip_status` grows because each trip-delay change is now one trip row (about 3,500 a snapshot at peak) in place of a row for every remaining stop. Scaled to a day, bus stop predictions come to roughly 0.75 GB instead of 1.2 GB. Peak memory is unchanged and sits at about 85% of the 900 MB container cap on macOS; it is re-measured on the Linux host before the worker is turned on.
