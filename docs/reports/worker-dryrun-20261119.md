@@ -44,3 +44,38 @@ Same three hours, same Mac, clean warehouse.
 | Peak memory (max RSS) | 772 MB | 765 MB |
 
 `trip_status` grows because each trip-delay change is now one trip row (about 3,500 a snapshot at peak) in place of a row for every remaining stop. Scaled to a day, bus stop predictions come to roughly 0.75 GB instead of 1.2 GB. Peak memory is unchanged and sits at about 85% of the 900 MB container cap on macOS; it is re-measured on the Linux host before the worker is turned on.
+
+## Replay, verify and a real timetable (09e726f)
+
+Same Mac, clean warehouse. The rebuild matched 4f151a2 row for row (57.8 s, peak 757 MB).
+
+### Replay from hour tars, then verify against the live build
+
+| Window | Hours | Files | Wall | Peak RSS | Verify |
+|---|---:|---:|---:|---:|---|
+| 17 Nov T21–T22 | 2 feed-hours | 360 | 53.9 s | 710 MB | 2 of 5 table-hours differ |
+| 17 Nov T16–T22 | 3 feed-hours | 480 | 58.3 s | 743 MB | **30 table-hours, 0 differ: identical** |
+
+The T21-only difference comes from the seed, not from replay. The live build had diffed the first 21:00 trip-update snapshot against the last 16:59 one. The replay had no hour 20 tar to seed from, so it wrote that snapshot in full: 42 extra `trip_status` rows (7,238 against 7,196) and the matching `bronze.snapshot.rows_emitted`. Every later file, and `stop_prediction` for that first file, matched exactly. With the same seed on both sides (the T16–T22 window) the two lakehouses are identical. The gate check therefore needs both sides to start from the same previous file; on the live host it will, because the offload keeps every hour.
+
+### Static timetable (D-029)
+
+One real zip, `20261117T074509.770654Z_40c41e270064.zip` (from the 287 MB hour tar).
+
+| | |
+|---|---:|
+| Wall time / peak RSS | 9.8 s / 638 MB |
+| Agencies / routes / stops | 688 / 10,191 / 171,316 |
+| Trips / stop times | 200,836 / 5,424,421 |
+| Distinct stop patterns | 127,457 |
+| Parquet, all timetable tables | ~40 MB (pattern stops 27 MB) |
+
+The zip has no `feed_info.txt`, so the publisher and feed-version columns are null; the version id is the landed file stem.
+
+### Agencies and the Sydney filter
+
+688 agency ids carry 462 distinct names; many operators have several ids (Transit Systems NSW is 2503 and 7063). Regional operators are in the same feed: the dry run's Newcastle bus (route `2449_S303`) belongs to agency 2449, Port Stephens Coaches, and 2448/2450/2457/7024 are Hunter Valley Buses. `agency_id` from the timetable is a clean key for the gold Sydney filter.
+
+### Memory
+
+All runs fit under the 900 MB container cap: rebuild 757 MB, replay 710–743 MB, timetable 638 MB (macOS max RSS; Linux still to measure).
