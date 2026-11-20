@@ -65,7 +65,7 @@ def test_404_backs_off_long() -> None:
 
 
 def test_lone_401_retries_at_normal_cadence() -> None:
-    # A one-off gateway blip must not cost five minutes (D-027).
+    # A one-off gateway blip must not cost five minutes (D-031).
     rng = random.Random(0)
     for failures in range(1, AUTH_GRACE_FAILURES):
         v = classify(401, {}, failures, now=NOW, rng=rng)

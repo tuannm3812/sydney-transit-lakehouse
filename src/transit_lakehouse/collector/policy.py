@@ -109,7 +109,7 @@ def classify(
     if status is None:
         return Verdict(False, "network_error", backoff)
     if status == 401:
-        # see D-027: back off hard only once the 401s repeat.
+        # see D-031: back off hard only once the 401s repeat.
         if failures < AUTH_GRACE_FAILURES:
             return Verdict(False, "unauthorised", backoff)
         return Verdict(False, "unauthorised", max(backoff, AUTH_BACKOFF_S))

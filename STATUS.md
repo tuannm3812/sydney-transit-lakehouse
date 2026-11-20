@@ -34,13 +34,27 @@
 |---|---|---:|---:|---|
 | 1 (partial, from 06:45 UTC) | 2026-11-17 | 100.00% (all 8 feeds) | ≤ 15 s realtime VP/TU; 86 s alerts | Server cron `capture-20261118.json`. 0 limit hits; preview quota 45% (27,299/day over 17.3 h). |
 | 24 h report window | 17 Nov 07:12 – 18 Nov 07:12 UTC | 100.00% (all 8 feeds) | ≤ 14 s realtime VP/TU; 86 s alerts | 27,339 requests (46%), 0 limit hits, 4.94 GB/day on disk; runway to about 1 Dec (D-024). Redeployed to `main` 83592ba at 04:06 UTC with no lost polls. |
-| 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; fix in D-027. Offload: 36 hourly runs, 801 objects, 0 failed. |
+| 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; fix in D-031. Offload: 36 hourly runs, 801 objects, 0 failed. |
 
 ## Blocked on Mike
 
 - Approval to enable the daily prune (keep 3 days locally, delete only hours re-verified in S3). Needed before about 1 Dec, when the disk fills (D-024, D-026). Hourly uploads have run clean since 2026-11-18 15:20 UTC.
-- Whether day 2's gap-rule failures (upstream 401 blip, D-027) count against the 7-day gate.
+- Whether day 2's gap-rule failures (upstream 401 blip, D-031) count against the 7-day gate.
 
-## Next after the gate
+## Reports
 
-Phase 1 adds a light worker that builds bronze/silver Iceberg tables from the landed raw snapshots, with Redpanda + Spark Structured Streaming run as an on-demand benchmark on the same feeds (D-023). Re-decide the long-term host before the AWS credits run out (D-015). See docs/4_next_steps.md.
+Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run.
+
+## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
+
+Built against tests and captured data while the capture run finishes; nothing is deployed to the collector host before the gate.
+
+- [x] Light worker core: bronze snapshot index, silver vehicle positions, stop predictions and trip status in Iceberg (D-027)
+- [x] Real-data dry run on a peak and an overnight hour (R1-01, docs/reports/worker-dryrun-20261119.md)
+- [x] Replay from the hour tars and `verify`: 30 of 30 table-hours identical on real data (R1-01)
+- [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts not yet run on real data
+- [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
+- [ ] Compaction
+- [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
+- [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
+- [ ] Re-decide the long-term host before the AWS credits run out (D-015)

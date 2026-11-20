@@ -1,7 +1,7 @@
-# Phase 0: the collector lands raw snapshots on local disk.
-# Redpanda, Spark, the Iceberg catalog and object storage join in
-# Phase 1+ (see docs/2_architecture.md); they are deliberately absent
-# until 7 days of clean capture prove the source is stable.
+# Phase 0 runs the collector (and the offload and checks tools).
+# Phase 1 adds the light worker below, behind the "worker" profile
+# (D-023, D-027). Redpanda and Spark join only as an on-demand
+# benchmark (docs/9_phase1.md).
 
 services:
   collector:
@@ -49,3 +49,27 @@ services:
       AWS_REGION: ap-southeast-2
     volumes:
       - ./data:/data
+
+  worker:
+    # Phase 1 light worker: raw snapshots -> bronze/silver Iceberg
+    # (D-023, D-027). Behind a profile so `docker compose up` on the
+    # collector host does not start it until Mike turns it on after the
+    # Phase 0 gate. No env_file: it needs no TfNSW key. The memory cap
+    # keeps it from starving the collector on the 2 GB host.
+    build: .
+    profiles: ["worker"]
+    entrypoint: ["python", "-m", "transit_lakehouse.worker"]
+    command: ["run", "--loop", "60"]
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    mem_limit: 900m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
