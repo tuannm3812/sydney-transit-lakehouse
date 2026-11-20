@@ -39,6 +39,20 @@
 
 - AWS setup for the raw offload (docs/8_offload.md: bucket, lifecycle rule, instance role, metadata hop limit), then approval to turn it on. Needed before about 1 Dec, when the disk fills (D-024, D-026).
 
-## Next after the gate
+## Reports
 
-Phase 1 adds a light worker that builds bronze/silver Iceberg tables from the landed raw snapshots, with Redpanda + Spark Structured Streaming run as an on-demand benchmark on the same feeds (D-023). Re-decide the long-term host before the AWS credits run out (D-015). See docs/4_next_steps.md.
+Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run.
+
+## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
+
+Built against tests and captured data while the capture run finishes; nothing is deployed to the collector host before the gate.
+
+- [x] Light worker core: bronze snapshot index, silver vehicle positions, stop predictions and trip status in Iceberg (D-027)
+- [x] Real-data dry run on a peak and an overnight hour (R1-01, docs/reports/worker-dryrun-20261119.md)
+- [x] Replay from the hour tars and `verify`: 30 of 30 table-hours identical on real data (R1-01)
+- [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts not yet run on real data
+- [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
+- [ ] Compaction
+- [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
+- [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
+- [ ] Re-decide the long-term host before the AWS credits run out (D-015)
