@@ -1,6 +1,8 @@
 -- Realtime trip states (silver.trip_status is change-only), each valid
 -- until the next row of the same trip, with the next row's stop count:
--- the stops that dropped out between the two have been passed.
+-- the stops that dropped out between the two have been passed. A
+-- REMOVED row (D-036) is written when the trip leaves the feed, with a
+-- stop count of 0.
 --
 -- service_date is the GTFS service day. TfNSW's start_date is the
 -- calendar day the trip runs on, so a trip timetabled after 24:00 of
@@ -36,7 +38,8 @@ select
     s.observed_at,
     s.fetched_at,
     lead(s.fetched_at) over w as next_fetched_at,
-    lead(s.stop_count) over w as next_stop_count
+    lead(s.stop_count) over w as next_stop_count,
+    lead(s.trip_status) over w as next_trip_status
 from states s
 left join after_midnight a
     on a.trip_id = s.trip_id

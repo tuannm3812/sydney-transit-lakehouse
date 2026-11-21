@@ -115,19 +115,23 @@ def test_stop_arrivals_rebuild_the_shifted_prediction(gold_db: Path) -> None:
         " schedule_disagreement_s, service_date::varchar"
         " from gold.fct_stop_arrival order by all",
     )
-    # T2's stop 2 has no stop row after the 21:05 slip: its 60 s comes
-    # from the trip delay. Each trip's last stop is never seen to drop.
+    # T2's stops 2 and 3 have no stop row after the 21:05 slip: their
+    # 60 s comes from the trip delay. Each last stop is passed when its
+    # trip leaves the feed with one stop to go (REMOVED, D-036).
     assert [(r[0], r[1], r[2]) for r in got] == [
         ("T1", 1, 120),
         ("T1", 2, 120),
+        ("T1", 3, 120),
         ("T2", 1, 0),
         ("T2", 2, 60),
+        ("T2", 3, 60),
         ("T4", 1, 0),
         ("T4", 2, 0),
+        ("T4", 3, 0),
     ]
-    assert got[3][3] == at("08:12:00").astimezone(got[3][3].tzinfo)
+    assert got[4][3] == at("08:12:00").astimezone(got[4][3].tzinfo)
     # T4 is matched to Tuesday's service day, so its times agree.
-    assert got[4][5] == "2026-11-17"
+    assert got[6][5] == "2026-11-17"
     assert {r[4] for r in got} == {0}
 
 
@@ -179,7 +183,7 @@ def test_headway_and_route_mart(gold_db: Path) -> None:
     )
     # T4 also runs on Wednesday's service day, at 08:05 on Thursday:
     # scheduled, but outside capture.
-    assert row == (4, 3, 2, 1, pytest.approx(1 / 3), 4)
+    assert row == (4, 3, 2, 1, pytest.approx(1 / 3), 6)
 
 
 def test_quality_tables_and_results(gold_db: Path) -> None:

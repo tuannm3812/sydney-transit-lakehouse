@@ -13,8 +13,11 @@
 -- itself (on 17 Nov, mostly a stale late prediction for several stops
 -- dropped at once); the stop was passed by left_feed_at, so the
 -- observed time is capped there and method says so.
--- A trip's last stops are never seen to drop out, because a finished
--- trip simply leaves the feed, so they have no row here.
+-- A trip's last stops drop out when the trip leaves the feed (the
+-- REMOVED row, D-036). That counts as passing them only when at most
+-- ran_max_stops_left stops were still listed; a trip that vanishes
+-- further from its end gives no arrivals for the stops it never
+-- reached.
 with sched as (
     select service_date, trip_id, pattern_id, day_origin_utc
     from {{ ref('stg_scheduled_trip') }}
@@ -43,7 +46,11 @@ passed as (
         and p.pos_from_end <= s.stop_count
         and p.pos_from_end > s.next_stop_count
     where s.next_fetched_at is not null
-        and s.trip_status <> 'CANCELED'
+        and s.trip_status not in ('CANCELED', 'REMOVED')
+        and (
+            s.next_trip_status is distinct from 'REMOVED'
+            or s.stop_count <= {{ var('ran_max_stops_left') }}
+        )
     -- a stop count that rises again can pass a stop twice; keep the last
     qualify row_number() over (
         partition by s.mode, s.trip_id, s.start_date, p.stop_sequence

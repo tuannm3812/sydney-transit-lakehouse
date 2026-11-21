@@ -1,6 +1,8 @@
 -- One row per scheduled trip x service day for every mode whose trip
 -- updates were captured that day: ran, partial, cancelled, never_seen
 -- (the "ghost" candidate) or not_judged, with a confidence level.
+-- REMOVED rows (D-036) only set left_feed_at: a trip that left the
+-- feed with more than ran_max_stops_left stops to go is partial.
 --
 -- A trip is judged only when its trip-update feed was captured from
 -- outcome_lead_minutes before its scheduled start to
@@ -26,10 +28,12 @@ rt as (
         trip_id,
         start_date,
         min(fetched_at) as first_seen_at,
-        max(fetched_at) as last_state_at,
-        min(stop_count) as min_stops_left,
-        arg_max(trip_status, fetched_at) as last_status,
-        count(*) as states
+        max(fetched_at) filter (trip_status <> 'REMOVED') as last_state_at,
+        max(fetched_at) filter (trip_status = 'REMOVED') as left_feed_at,
+        min(stop_count) filter (trip_status <> 'REMOVED') as min_stops_left,
+        arg_max(trip_status, fetched_at) filter (trip_status <> 'REMOVED')
+            as last_status,
+        count(*) filter (trip_status <> 'REMOVED') as states
     from {{ ref('stg_rt_trip_state') }}
     group by all
 ),
@@ -76,6 +80,7 @@ base as (
         j.*,
         rt.first_seen_at,
         rt.last_state_at,
+        rt.left_feed_at,
         rt.min_stops_left,
         rt.last_status,
         vp.first_position_at,
@@ -142,6 +147,7 @@ select
     vp_covered,
     first_seen_at,
     last_state_at,
+    left_feed_at,
     min_stops_left,
     last_status,
     first_position_at,
