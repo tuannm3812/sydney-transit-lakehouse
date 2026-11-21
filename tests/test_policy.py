@@ -4,6 +4,8 @@ import random
 from datetime import UTC, datetime
 
 from transit_lakehouse.collector.policy import (
+    AUTH_BACKOFF_S,
+    AUTH_GRACE_FAILURES,
     MAX_BACKOFF_S,
     classify,
     exponential_backoff,
@@ -60,3 +62,19 @@ def test_quota_reset_is_fixed_utc_plus_10() -> None:
 
 def test_404_backs_off_long() -> None:
     assert classify(404, {}, 1, now=NOW).backoff_s >= 600
+
+
+def test_lone_401_retries_at_normal_cadence() -> None:
+    # A one-off gateway blip must not cost five minutes (D-031).
+    rng = random.Random(0)
+    for failures in range(1, AUTH_GRACE_FAILURES):
+        v = classify(401, {}, failures, now=NOW, rng=rng)
+        assert not v.ok
+        assert v.reason == "unauthorised"
+        assert v.backoff_s < 10
+
+
+def test_repeated_401_backs_off_long() -> None:
+    v = classify(401, {}, AUTH_GRACE_FAILURES, now=NOW)
+    assert v.reason == "unauthorised"
+    assert v.backoff_s >= AUTH_BACKOFF_S

@@ -34,10 +34,11 @@
 |---|---|---:|---:|---|
 | 1 (partial, from 06:45 UTC) | 2026-11-17 | 100.00% (all 8 feeds) | ≤ 15 s realtime VP/TU; 86 s alerts | Server cron `capture-20261118.json`. 0 limit hits; preview quota 45% (27,299/day over 17.3 h). |
 | 24 h report window | 17 Nov 07:12 – 18 Nov 07:12 UTC | 100.00% (all 8 feeds) | ≤ 14 s realtime VP/TU; 86 s alerts | 27,339 requests (46%), 0 limit hits, 4.94 GB/day on disk; runway to about 1 Dec (D-024). Redeployed to `main` 83592ba at 04:06 UTC with no lost polls. |
+| 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; Mike counted day 2 toward the gate (2026-11-21). Fix in D-031. Offload: 36 hourly runs, 801 objects, 0 failed. |
 
 ## Blocked on Mike
 
-- AWS setup for the raw offload (docs/8_offload.md: bucket, lifecycle rule, instance role, metadata hop limit), then approval to turn it on. Needed before about 1 Dec, when the disk fills (D-024, D-026).
+- Approval to enable the daily prune (keep 3 days locally, delete only hours re-verified in S3). Needed before about 1 Dec, when the disk fills (D-024, D-026). Hourly uploads have run clean since 2026-11-18 15:20 UTC.
 
 ## Reports
 

@@ -24,6 +24,10 @@ AEST = timezone(timedelta(hours=10), "AEST")
 BASE_BACKOFF_S = 2.0
 MAX_BACKOFF_S = 300.0
 AUTH_BACKOFF_S = 300.0
+# A lone 401 is usually a gateway blip, not a bad key: on 2026-11-19
+# four feeds each got one 401 while the other eight kept getting 200s
+# on the same key. Retry at normal cadence until this many in a row.
+AUTH_GRACE_FAILURES = 3
 NOT_FOUND_BACKOFF_S = 900.0
 RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
@@ -105,6 +109,9 @@ def classify(
     if status is None:
         return Verdict(False, "network_error", backoff)
     if status == 401:
+        # see D-031: back off hard only once the 401s repeat.
+        if failures < AUTH_GRACE_FAILURES:
+            return Verdict(False, "unauthorised", backoff)
         return Verdict(False, "unauthorised", max(backoff, AUTH_BACKOFF_S))
     if status == 404:
         return Verdict(False, "not_found", NOT_FOUND_BACKOFF_S)
