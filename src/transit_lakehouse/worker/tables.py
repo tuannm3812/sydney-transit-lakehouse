@@ -25,7 +25,10 @@ from pathlib import Path
 import pyarrow as pa
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.exceptions import NamespaceAlreadyExistsError
+from pyiceberg.exceptions import (
+    NamespaceAlreadyExistsError,
+    NoSuchTableError,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
@@ -53,9 +56,17 @@ from transit_lakehouse.worker.silver import (
 )
 
 WATERMARK_PREFIX = "transit.watermark."
+# The worker commits about once a minute, and each commit writes a new
+# metadata JSON. Keep only the last few, so metadata does not grow by
+# ~1,440 files a table a day (D-032).
+METADATA_PROPERTIES = {
+    "write.metadata.delete-after-commit.enabled": "true",
+    "write.metadata.previous-versions-max": "20",
+}
 TABLE_PROPERTIES = {
     "write.parquet.compression-codec": "zstd",
     "format-version": "2",
+    **METADATA_PROPERTIES,
 }
 
 STR, TSZ, DATE = StringType(), TimestamptzType(), DateType()
@@ -206,12 +217,27 @@ def create_table(
 ) -> Table:
     with contextlib.suppress(NamespaceAlreadyExistsError):
         catalog.create_namespace(name.split(".")[0])
-    return catalog.create_table_if_not_exists(
-        name,
-        schema=schema,
-        partition_spec=spec_for(schema, parts),
-        properties=TABLE_PROPERTIES,
-    )
+    try:
+        # Load first: create_table_if_not_exists writes a new metadata
+        # JSON before it finds the table exists, leaving one orphan file
+        # per table per start.
+        table = catalog.load_table(name)
+    except NoSuchTableError:
+        table = catalog.create_table(
+            name,
+            schema=schema,
+            partition_spec=spec_for(schema, parts),
+            properties=TABLE_PROPERTIES,
+        )
+    missing = {
+        k: v
+        for k, v in METADATA_PROPERTIES.items()
+        if table.properties.get(k) != v
+    }
+    if missing:  # tables made before D-032 get the cleanup settings once
+        with table.transaction() as tx:
+            tx.set_properties(missing)
+    return table
 
 
 def ensure_tables(catalog: Catalog) -> dict[str, Table]:

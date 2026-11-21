@@ -31,7 +31,11 @@ from transit_lakehouse.collector.config import Feed
 from transit_lakehouse.worker.decode import landed_after, read_snapshot
 from transit_lakehouse.worker.silver import FeedDiffer, Rows
 from transit_lakehouse.worker.tables import commit, ensure_tables, watermarks
-from transit_lakehouse.worker.timetable import VersionStats, run_timetable
+from transit_lakehouse.worker.timetable import (
+    VersionStats,
+    ensure_timetable_tables,
+    run_timetable,
+)
 
 log = logging.getLogger(__name__)
 
@@ -178,7 +182,13 @@ def run_loop(
     should_stop: Callable[[], bool],
     **kwargs,
 ) -> None:
-    """Run every ``interval_s`` seconds until ``should_stop()``."""
+    """Run every ``interval_s`` seconds until ``should_stop()``.
+
+    Once an hour, after a run, the closed hours' small files are
+    compacted (compact.py)."""
+    from transit_lakehouse.worker.compact import compact
+
+    compacted_hour = None
     while not should_stop():
         tick = time.monotonic()
         try:
@@ -188,23 +198,98 @@ def run_loop(
             # One bad run must not end the service; the next run starts
             # from the committed watermarks again.
             log.exception("run failed")
+        hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        if hour != compacted_hour:
+            try:
+                log.info("compact: %s", compact(catalog).summary())
+                gone = expire(catalog, EXPIRE_AFTER)
+                log.info("expire: %d snapshots", sum(gone.values()))
+                compacted_hour = hour
+            except Exception:
+                log.exception("compact or expire failed")
         deadline = tick + interval_s
         while not should_stop() and time.monotonic() < deadline:
             time.sleep(min(1.0, deadline - time.monotonic()))
 
 
+EXPIRE_AFTER = timedelta(hours=24)  # run --loop expires hourly (D-032)
+
+
+def _files(table) -> tuple[set[str], set[str]]:
+    """Data files and metadata files (manifest lists and manifests) that
+    any live snapshot of ``table`` points at."""
+    data: set[str] = set()
+    meta: set[str] = set()
+    for snap in table.snapshots():
+        meta.add(snap.manifest_list)
+        for manifest in snap.manifests(table.io):
+            if manifest.manifest_path in meta:
+                continue  # shared with an earlier snapshot: read once
+            meta.add(manifest.manifest_path)
+            for entry in manifest.fetch_manifest_entry(table.io):
+                data.add(entry.data_file.file_path)
+    return data, meta
+
+
 def expire(catalog: Catalog, older_than: timedelta) -> dict[str, int]:
-    """Expire Iceberg snapshots older than ``older_than``.
+    """Expire Iceberg snapshots older than ``older_than``, and delete the
+    data files, manifests and manifest lists that only those snapshots
+    used.
 
     The worker commits about once a minute, so without expiry the table
-    metadata grows by ~1,440 snapshots a day. The current snapshot is
-    always kept.
+    metadata grows by ~1,440 snapshots a day; and compaction's merged
+    files stay on disk until the snapshots that point at them go.
+    PyIceberg drops expired snapshots from the metadata but leaves their
+    files, so this deletes them, then sweeps metadata files nothing
+    points at (D-032). The table properties trim old metadata JSON on
+    each commit. Covers the realtime and timetable tables. The current
+    snapshot is always kept, and a table with nothing to expire gets no
+    commit.
     """
+    started = time.time()
     cutoff = datetime.now(UTC) - older_than
+    cutoff_ms = int(cutoff.timestamp() * 1000)
     out: dict[str, int] = {}
-    for name, table in ensure_tables(catalog).items():
-        before = len(table.snapshots())
-        table.maintenance.expire_snapshots().older_than(cutoff).commit()
-        table.refresh()
-        out[name] = before - len(table.snapshots())
+    tables = {**ensure_tables(catalog), **ensure_timetable_tables(catalog)}
+    for name, table in tables.items():
+        current = table.current_snapshot()
+        old = [
+            s
+            for s in table.snapshots()
+            if s.timestamp_ms < cutoff_ms
+            and (current is None or s.snapshot_id != current.snapshot_id)
+        ]
+        out[name] = len(old)
+        if old:  # no commit, so no new metadata file, when nothing expires
+            data_before, _ = _files(table)
+            table.maintenance.expire_snapshots().older_than(cutoff).commit()
+            table.refresh()
+            data_after, _ = _files(table)
+            for path in sorted(data_before - data_after):
+                table.io.delete(path)
+        _sweep_metadata(table, started)
     return out
+
+
+def _sweep_metadata(table, before: float) -> int:
+    """Delete metadata files in a local table's ``metadata/`` folder that
+    the current metadata no longer points at: manifests of snapshots
+    expired before D-032's fix and JSON files that left the metadata log.
+    Only files older than ``before`` go, so a commit made while this
+    runs is never touched (the worker lock keeps writers out anyway)."""
+    folder = Path(table.metadata_location).parent
+    if not folder.is_dir():
+        return 0  # object storage: no listing here, nothing to sweep
+    _, live = _files(table)
+    live.add(table.metadata_location)
+    live.update(e.metadata_file for e in table.metadata.metadata_log)
+    live = {str(Path(p.removeprefix("file://")).resolve()) for p in live}
+    gone = 0
+    for path in folder.iterdir():
+        if not path.name.endswith((".avro", ".metadata.json")):
+            continue
+        if str(path.resolve()) in live or path.stat().st_mtime >= before:
+            continue
+        path.unlink()
+        gone += 1
+    return gone
