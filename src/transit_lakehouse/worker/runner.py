@@ -31,7 +31,11 @@ from transit_lakehouse.collector.config import Feed
 from transit_lakehouse.worker.decode import landed_after, read_snapshot
 from transit_lakehouse.worker.silver import FeedDiffer, Rows
 from transit_lakehouse.worker.tables import commit, ensure_tables, watermarks
-from transit_lakehouse.worker.timetable import VersionStats, run_timetable
+from transit_lakehouse.worker.timetable import (
+    VersionStats,
+    ensure_timetable_tables,
+    run_timetable,
+)
 
 log = logging.getLogger(__name__)
 
@@ -198,41 +202,60 @@ def run_loop(
         if hour != compacted_hour:
             try:
                 log.info("compact: %s", compact(catalog).summary())
+                gone = expire(catalog, EXPIRE_AFTER)
+                log.info("expire: %d snapshots", sum(gone.values()))
                 compacted_hour = hour
             except Exception:
-                log.exception("compact failed")
+                log.exception("compact or expire failed")
         deadline = tick + interval_s
         while not should_stop() and time.monotonic() < deadline:
             time.sleep(min(1.0, deadline - time.monotonic()))
 
 
-def _data_files(table) -> set[str]:
-    """Every data file any live snapshot of ``table`` points at."""
-    paths: set[str] = set()
+EXPIRE_AFTER = timedelta(hours=24)  # run --loop expires hourly (D-032)
+
+
+def _files(table) -> tuple[set[str], set[str]]:
+    """Data files and metadata files (manifest lists and manifests) that
+    any live snapshot of ``table`` points at."""
+    data: set[str] = set()
+    meta: set[str] = set()
     for snap in table.snapshots():
+        meta.add(snap.manifest_list)
         for manifest in snap.manifests(table.io):
+            if manifest.manifest_path in meta:
+                continue  # shared with an earlier snapshot: read once
+            meta.add(manifest.manifest_path)
             for entry in manifest.fetch_manifest_entry(table.io):
-                paths.add(entry.data_file.file_path)
-    return paths
+                data.add(entry.data_file.file_path)
+    return data, meta
 
 
 def expire(catalog: Catalog, older_than: timedelta) -> dict[str, int]:
     """Expire Iceberg snapshots older than ``older_than``, and delete the
-    data files that only those snapshots used.
+    data files, manifests and manifest lists that only those snapshots
+    used.
 
     The worker commits about once a minute, so without expiry the table
     metadata grows by ~1,440 snapshots a day; and compaction's merged
-    files stay on disk until the snapshots that point at them go. The
-    current snapshot is always kept.
+    files stay on disk until the snapshots that point at them go.
+    PyIceberg drops expired snapshots from the metadata but leaves their
+    files, so this deletes them (D-032). Old metadata JSON files are
+    trimmed on each commit by the table properties. Covers the realtime
+    and timetable tables. The current snapshot is always kept.
     """
     cutoff = datetime.now(UTC) - older_than
     out: dict[str, int] = {}
-    for name, table in ensure_tables(catalog).items():
+    tables = {**ensure_tables(catalog), **ensure_timetable_tables(catalog)}
+    for name, table in tables.items():
         before = len(table.snapshots())
-        files_before = _data_files(table)
+        data_before, meta_before = _files(table)
         table.maintenance.expire_snapshots().older_than(cutoff).commit()
         table.refresh()
-        for path in sorted(files_before - _data_files(table)):
+        data_after, meta_after = _files(table)
+        for path in sorted(data_before - data_after):
+            table.io.delete(path)
+        for path in sorted(meta_before - meta_after):
             table.io.delete(path)
         out[name] = before - len(table.snapshots())
     return out

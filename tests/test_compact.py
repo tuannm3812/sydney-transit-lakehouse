@@ -93,3 +93,38 @@ def test_expire_deletes_files_only_old_snapshots_used(tmp_path: Path) -> None:
     expire(catalog, timedelta(seconds=0))
     assert len(list(folder.glob(pattern))) == 1
     assert rows(catalog, "silver.stop_prediction") == expected
+
+
+def test_expire_deletes_old_metadata(tmp_path: Path) -> None:
+    from transit_lakehouse.worker.runner import expire
+
+    data_dir = tmp_path / "data"
+    catalog = _build(data_dir)
+    compact(catalog, now=T0 + timedelta(hours=2))
+    expire(catalog, timedelta(seconds=0))
+    meta = data_dir / "lakehouse" / "warehouse" / "silver"
+    meta = meta / "stop_prediction" / "metadata"
+    table = catalog.load_table("silver.stop_prediction")
+    assert len(table.snapshots()) == 1
+    snap = table.current_snapshot()
+    live = {Path(snap.manifest_list).name} | {
+        Path(m.manifest_path).name for m in snap.manifests(table.io)
+    }
+    avro = {p.name for p in meta.glob("*.avro")}
+    assert avro == live  # only the current snapshot's manifests remain
+    assert len(list(meta.glob("*.metadata.json"))) <= 21
+
+
+def test_old_tables_get_metadata_cleanup(tmp_path: Path) -> None:
+    from transit_lakehouse.worker.tables import (
+        METADATA_PROPERTIES,
+        ensure_tables,
+    )
+
+    catalog = open_catalog(tmp_path / "data", env={})
+    table = ensure_tables(catalog)["silver.trip_status"]
+    with table.transaction() as tx:  # as a table made before D-032
+        tx.remove_properties(*METADATA_PROPERTIES)
+    table = ensure_tables(catalog)["silver.trip_status"]
+    for key, value in METADATA_PROPERTIES.items():
+        assert table.properties[key] == value
