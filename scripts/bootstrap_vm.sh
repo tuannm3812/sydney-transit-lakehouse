@@ -85,6 +85,12 @@ if ! crontab -l 2>/dev/null | grep -q 'checks capture'; then
   (crontab -l 2>/dev/null || true; echo "$CRON_LINE") | crontab -
 fi
 
+WATCH_LINE="*/5 * * * * cd $APP_DIR && docker compose run --rm checks watch >> docs/reports/watch.log 2>&1"
+if ! crontab -l 2>/dev/null | grep -q 'checks watch'; then
+  log "Scheduling the live watch (every 5 min; set ALERT_NTFY_TOPIC in .env to get alerts)"
+  (crontab -l 2>/dev/null || true; echo "$WATCH_LINE") | crontab -
+fi
+
 log "Done. Useful commands:"
 cat <<MSG
   cd $APP_DIR

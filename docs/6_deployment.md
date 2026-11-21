@@ -114,3 +114,17 @@ docker compose run --rm checks capture --window 15m
 ## Cost
 
 AWS: t3.small, 30 GB gp3 and a public IPv4 come to about USD 23/month (the USD 100 sign-up credit lasts about 4 months), covered by Free plan credits. Hetzner: about AUD 7/month for CAX11 plus IPv4. Oracle: $0 inside Always Free (4 OCPU, 24 GB, 200 GB block storage, 10 TB/month egress). Overnight raw volume was about 0.5 GB/day (D-013), so 7 days of Phase 0 fit easily on the boot volume.
+
+## Live alerts (D-034)
+
+`checks watch` runs every 5 minutes and pushes a phone alert when a feed goes silent (no successful poll for 4 intervals) or the disk drops below 10 GB free. It alerts again when the problem clears, and reminds you every 3 hours while one stays open.
+
+1. Install the **ntfy** app (iOS or Android) and subscribe to a new topic with a long random name, for example `transit-` followed by 20 random letters. Anyone who knows the name can read the alerts, so treat it like a password.
+2. On the server, add `ALERT_NTFY_TOPIC=<that name>` to `.env` yourself.
+3. Add the cron line (new servers get it from `scripts/bootstrap_vm.sh`):
+
+   ```
+   */5 * * * * cd /home/ubuntu/sydney-transit-lakehouse && docker compose run --rm checks watch >> docs/reports/watch.log 2>&1
+   ```
+
+4. Test it once with `docker compose run --rm checks watch --min-free-gb 999`. That reports a low disk, so you should get a push. Run it again without the flag to get the "recovered" push.
