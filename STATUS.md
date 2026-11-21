@@ -1,10 +1,10 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-18 (after the 24-hour report).*
+*Rewritten in place. Last updated 2026-11-21 (after the day 3 outage).*
 
-**Phase 0, "Collect first" (week 1).** The collector runs on AWS EC2 in Sydney (D-015, D-016) and has captured 100% of polls on the 6 original feeds since 2026-11-17 06:45 UTC. Static GTFS and Service Alerts were added the same evening after reconciling the plan (D-019).
+**Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
-**Gate:** 7 consecutive days at ≥ 99% capture on every enabled feed (`checks capture --window 7d --gate` exits 0), and the real API quota confirmed by the 24-hour report. Earliest pass: about 2026-11-24 for the original 6 feeds, a day later for the 2 new ones.
+**Gate:** 7 consecutive days at ≥ 99% capture on every enabled feed (`checks capture --window 7d --gate` exits 0), and the real API quota confirmed by the 24-hour report (done, D-024). **The clock restarted after TfNSW's outage on 20 Nov (D-033). Earliest pass: about 2026-11-27 16:00 UTC (28 Nov, 3 am Sydney) for all 12 feeds.**
 
 ## Phase 0 checklist
 
@@ -35,10 +35,12 @@
 | 1 (partial, from 06:45 UTC) | 2026-11-17 | 100.00% (all 8 feeds) | ≤ 15 s realtime VP/TU; 86 s alerts | Server cron `capture-20261118.json`. 0 limit hits; preview quota 45% (27,299/day over 17.3 h). |
 | 24 h report window | 17 Nov 07:12 – 18 Nov 07:12 UTC | 100.00% (all 8 feeds) | ≤ 14 s realtime VP/TU; 86 s alerts | 27,339 requests (46%), 0 limit hits, 4.94 GB/day on disk; runway to about 1 Dec (D-024). Redeployed to `main` 83592ba at 04:06 UTC with no lost polls. |
 | 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; Mike counted day 2 toward the gate (2026-11-21). Fix in D-031. Offload: 36 hourly runs, 801 objects, 0 failed. |
+| 3 | 2026-11-20 | **93.82% (bus TU): FAIL on 10 feeds** | not recorded | Server cron `capture-20261121.json`, 20 Nov 00:05 – 21 Nov 00:05 UTC. **TfNSW outage:** 14:26 – about 15:02 UTC the gateway answered almost every realtime request with 502 "Error collecting requested resource" (662 × 502, 18 network errors), with intermittent 502s until 15:58; longest gaps 1,499 – 2,648 s. Service alerts (99.93%) and the timetable passed. The collector kept polling and recorded every attempt. Also three lone 401s at 10:46 – 10:48 UTC, each a 300 s gap (before the D-031 fix went live). **Mike: strict gate, the 7-day clock restarts (D-033).** |
+| 4 (partial, 13 h) | 2026-11-21 | 99.97% (metro VP, light rail VP); all 12 feeds pass | not recorded | Check over 00:59 – 13:59 UTC, exit 0; longest gap 32 s. Redeployed to 9a8185f at 11:38 UTC (D-031 live). Full day from the 22 Nov 00:05 UTC cron. |
 
 ## Blocked on Mike
 
-- Approval to enable the daily prune (keep 3 days locally, delete only hours re-verified in S3). Needed before about 1 Dec, when the disk fills (D-024, D-026). Hourly uploads have run clean since 2026-11-18 15:20 UTC.
+- Nothing for Phase 0. The daily prune runs at 01:40 UTC from 2026-11-22 (approved 2026-11-21).
 
 ## Reports
 
