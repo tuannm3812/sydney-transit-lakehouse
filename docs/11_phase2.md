@@ -45,7 +45,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 | 4 | **Route reliability mart** | built without excess wait time | item 9 |
 | 5 | **Quality tests**: match rate, delay sanity, timetable agreement, arrival position, plausibility | built, all pass on two real hours | nothing |
 | 6 | **`dq_results` table** | built | nothing |
-| 7 | **Trip left the feed** in silver (`removed` row in `trip_status`, like `silver.alert`, D-030), for terminus arrivals and a cleaner "vanished mid-route" | proposed | Mike; cheapest before the worker goes live |
+| 7 | **Trip left the feed** in silver (`REMOVED` row in `trip_status`, D-036), for last-stop arrivals and when a trip vanished | built (Mike, 22 Nov); R2-01 section 3.7 | nothing |
 | 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | planned | nothing |
 | 9 | **Excess wait time** from headways | planned | nothing |
 | 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned | the worker live on the host |

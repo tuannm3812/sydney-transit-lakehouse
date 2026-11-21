@@ -7,9 +7,9 @@ status: Interim
 verdict: Pass with actions
 date: 2026-11-21
 window: 17 Nov 2026, 16:00 to 17:00 and 21:00 to 22:00 UTC (3 am and 8 am Sydney) for bus trip updates; 21:00 to 22:00 UTC for bus vehicle positions; timetable published 07:45 UTC
-commit: 5801cc0 (gold models); silver tables built by the Phase 1 worker at the same commit
+commit: 5801cc0 (gold models, sections 3.1 to 3.6); e04e253 (trip left the feed, section 3.7); silver rebuilt by the worker at each
 environment: Cloud Linux container (x86, 4 cores), Python 3.13, dbt-core 1.12, dbt-duckdb 1.11, DuckDB 2.0, pyiceberg 0.12. Nothing ran on the collector host.
-decisions: D-027, D-028, D-029, D-035
+decisions: D-027, D-028, D-029, D-035, D-036
 evidence: the four hour tars of R1-01 (on Mike's Mac in data/_downloads); gold database rebuilt by the commands in the appendix (gitignored)
 ---
 
@@ -24,6 +24,7 @@ evidence: the four hour tars of R1-01 (on Mike's Mac in data/_downloads); gold d
 - **After-midnight trips are dated by calendar day.** TfNSW gives a trip timetabled after 24:00 the next day's `start_date`; moving 129 such trips back to their service day lifted timetable agreement from 98.4% to 99.95% (section 3.4).
 - **Never seen is mostly operators without realtime.** In the 8 am window 1 of 184 judged Sydney trips was never seen, against 45 of 99 regional ones, 44 of them from operators with no trip in the feed at all (section 3.5).
 - **The build fits the cap.** A full build of two hours took 24.2 s and peaked at 714 MB with DuckDB held to 300 MB (section 3.6).
+- **Trips now end in the data.** A row when a trip leaves the feed (D-036) adds 4,716 last-stop arrivals, with the position check unchanged at 95.9% (section 3.7).
 
 ## Scope and method
 
@@ -143,6 +144,24 @@ limit: 900 | container cap
 
 About 400 MB of the peak is dbt and Python, above whatever DuckDB is allowed. The gold database is 21 MB.
 
+### Trip left the feed
+
+D-036, at e04e253: the worker writes a `REMOVED` row in `silver.trip_status` when a trip in the previous snapshot is missing from the next, except after a file that failed to decode. Gold counts the stops still listed as passed only when the trip left with at most 2 to go. Silver and gold were rebuilt from the same tars.
+
+| | 5801cc0 | e04e253 |
+|---|---:|---:|
+| `silver.trip_status` rows | 443,100 | 448,480 |
+| `REMOVED` rows | n/a | 5,380 |
+| Trips that left with at most 2 stops to go | n/a | 4,789 |
+| Trips that left with more to go | n/a | 482 |
+| `gold.fct_stop_arrival` rows | 142,314 | **147,450** |
+| Last-stop arrivals | 0 | 4,716 |
+| Arrivals within 150 m of a position | 95.9% | 95.9% |
+| dbt nodes passing | 33 of 33 | 33 of 33 |
+| Gold build peak memory | 714 MB | 630 MB |
+
+Last stops are on time less often than the rest (49.4% against 66.4%, between 1 minute early and 5 minutes late), as expected where timetables hold recovery time at the terminus. The memory difference is run to run on the same limits.
+
 ## Findings
 
 - **The trip_id join, the top risk on the deck, holds for buses.** 99.7% of realtime trips match their service day's timetable (section 3.2), and the realtime feed's own scheduled times agree with the timetable's for 99.95% of passed stops (section 3.3).
@@ -155,7 +174,7 @@ About 400 MB of the peak is dbt and Python, above whatever DuckDB is allowed. Th
 
 - **Two hours of one mode.** Every number is from bus feeds on one weekday morning and one night. Trains, metro, light rail and ferries are untested; their trip ids may not match the complete timetable as well.
 - **Outcome rates are not representative.** Only 283 trips could be judged, all short ones starting 21:10 to 21:39 UTC, and with a 20-minute grace instead of the plan's 3 hours (section 3.5).
-- **A trip's last stops have no arrival.** A finished trip leaves the feed, and silver does not record when a trip disappears, so the final stop is never seen to drop out. Terminus on-time needs that event.
+- **A vanished trip's unreached stops have no arrival.** When a trip leaves the feed with more than 2 stops to go, those stops are left out rather than guessed (section 3.7). A trip that leaves during an unreadable file gets no `REMOVED` row.
 - **Arrival times are a bound, not a measurement.** They are TfNSW's last prediction before the stop dropped, capped at the drop; the position check shows they are close, not exact.
 - **Memory at day scale is estimated.** A day holds about twelve times these rows; DuckDB spills to disk above its limit, so memory should hold and time should grow, but this was not run.
 - **Measured off the server.** The container was x86 Linux, not the t3.small, and not in Docker.
@@ -163,7 +182,6 @@ About 400 MB of the peak is dbt and Python, above whatever DuckDB is allowed. Th
 ## Next steps
 
 - **Mike: review the PR** with the gold package, the models and this report.
-- **Silver: record when a trip leaves the feed** (a `removed` row in `silver.trip_status`, as `silver.alert` does, D-030). It is cheapest now, before the worker runs live, and gives terminus arrivals and a cleaner "vanished mid-route" outcome.
 - **Run a full day once the worker is live** after the Phase 0 gate (about 28 Nov): every mode, the plan's 3-hour grace, and the memory and time of a day-sized build.
 - **Incremental builds by service day**, then a nightly schedule after the worker's compaction hour, not beside it.
 - **Operator coverage in gold**, so ghost rates count only operators that publish realtime.

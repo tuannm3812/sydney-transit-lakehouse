@@ -69,6 +69,6 @@ Built on silver tables replayed from real hour tars; nothing is deployed. Gate: 
 - [x] Stop arrivals, headways, trip outcomes and the route reliability mart; 33 of 33 dbt nodes pass on two real bus hours (R2-01)
 - [x] Quality tests: 99.7% trip match, arrivals a median 48 m from the bus's position, 99.95% timetable agreement (R2-01)
 - [x] After-midnight trips: TfNSW dates them by calendar day; gold moves them to their service day (D-035)
-- [ ] **Mike:** record when a trip leaves the feed in silver (cheapest before the worker goes live)
+- [x] Record when a trip leaves the feed in silver (Mike, 22 Nov, D-036): 4,716 last-stop arrivals on the real hours
 - [ ] Operator coverage for ghost rates, excess wait time, incremental nightly builds
 - [ ] **After the worker is live:** a full day of every mode, then the volume test and the public quality page
