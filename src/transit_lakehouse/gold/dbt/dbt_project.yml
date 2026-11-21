@@ -1,4 +1,4 @@
-# Gold layer for the Sydney transit lakehouse (Phase 2, D-034).
+# Gold layer for the Sydney transit lakehouse (Phase 2, D-035).
 # Run through `python -m transit_lakehouse.gold build`, which first
 # points the `bronze` and `silver` schemas at the live Iceberg files.
 name: transit_gold

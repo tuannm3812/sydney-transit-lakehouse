@@ -75,7 +75,7 @@ services:
         max-file: "5"
 
   gold:
-    # Phase 2 gold marts (D-034): a one-off dbt build on DuckDB over the
+    # Phase 2 gold marts (D-035): a one-off dbt build on DuckDB over the
     # silver tables, `docker compose --profile gold run --rm gold build`.
     # Not scheduled yet: it waits for the worker to run live. DuckDB is
     # held to 300 MB and one thread; the whole process peaked at about
