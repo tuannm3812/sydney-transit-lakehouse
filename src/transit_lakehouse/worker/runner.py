@@ -240,22 +240,56 @@ def expire(catalog: Catalog, older_than: timedelta) -> dict[str, int]:
     metadata grows by ~1,440 snapshots a day; and compaction's merged
     files stay on disk until the snapshots that point at them go.
     PyIceberg drops expired snapshots from the metadata but leaves their
-    files, so this deletes them (D-032). Old metadata JSON files are
-    trimmed on each commit by the table properties. Covers the realtime
-    and timetable tables. The current snapshot is always kept.
+    files, so this deletes them, then sweeps metadata files nothing
+    points at (D-032). The table properties trim old metadata JSON on
+    each commit. Covers the realtime and timetable tables. The current
+    snapshot is always kept, and a table with nothing to expire gets no
+    commit.
     """
+    started = time.time()
     cutoff = datetime.now(UTC) - older_than
+    cutoff_ms = int(cutoff.timestamp() * 1000)
     out: dict[str, int] = {}
     tables = {**ensure_tables(catalog), **ensure_timetable_tables(catalog)}
     for name, table in tables.items():
-        before = len(table.snapshots())
-        data_before, meta_before = _files(table)
-        table.maintenance.expire_snapshots().older_than(cutoff).commit()
-        table.refresh()
-        data_after, meta_after = _files(table)
-        for path in sorted(data_before - data_after):
-            table.io.delete(path)
-        for path in sorted(meta_before - meta_after):
-            table.io.delete(path)
-        out[name] = before - len(table.snapshots())
+        current = table.current_snapshot()
+        old = [
+            s
+            for s in table.snapshots()
+            if s.timestamp_ms < cutoff_ms
+            and (current is None or s.snapshot_id != current.snapshot_id)
+        ]
+        out[name] = len(old)
+        if old:  # no commit, so no new metadata file, when nothing expires
+            data_before, _ = _files(table)
+            table.maintenance.expire_snapshots().older_than(cutoff).commit()
+            table.refresh()
+            data_after, _ = _files(table)
+            for path in sorted(data_before - data_after):
+                table.io.delete(path)
+        _sweep_metadata(table, started)
     return out
+
+
+def _sweep_metadata(table, before: float) -> int:
+    """Delete metadata files in a local table's ``metadata/`` folder that
+    the current metadata no longer points at: manifests of snapshots
+    expired before D-032's fix and JSON files that left the metadata log.
+    Only files older than ``before`` go, so a commit made while this
+    runs is never touched (the worker lock keeps writers out anyway)."""
+    folder = Path(table.metadata_location).parent
+    if not folder.is_dir():
+        return 0  # object storage: no listing here, nothing to sweep
+    _, live = _files(table)
+    live.add(table.metadata_location)
+    live.update(e.metadata_file for e in table.metadata.metadata_log)
+    live = {str(Path(p.removeprefix("file://")).resolve()) for p in live}
+    gone = 0
+    for path in folder.iterdir():
+        if not path.name.endswith((".avro", ".metadata.json")):
+            continue
+        if str(path.resolve()) in live or path.stat().st_mtime >= before:
+            continue
+        path.unlink()
+        gone += 1
+    return gone

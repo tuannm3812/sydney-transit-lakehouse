@@ -25,7 +25,10 @@ from pathlib import Path
 import pyarrow as pa
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.exceptions import NamespaceAlreadyExistsError
+from pyiceberg.exceptions import (
+    NamespaceAlreadyExistsError,
+    NoSuchTableError,
+)
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
@@ -214,12 +217,18 @@ def create_table(
 ) -> Table:
     with contextlib.suppress(NamespaceAlreadyExistsError):
         catalog.create_namespace(name.split(".")[0])
-    table = catalog.create_table_if_not_exists(
-        name,
-        schema=schema,
-        partition_spec=spec_for(schema, parts),
-        properties=TABLE_PROPERTIES,
-    )
+    try:
+        # Load first: create_table_if_not_exists writes a new metadata
+        # JSON before it finds the table exists, leaving one orphan file
+        # per table per start.
+        table = catalog.load_table(name)
+    except NoSuchTableError:
+        table = catalog.create_table(
+            name,
+            schema=schema,
+            partition_spec=spec_for(schema, parts),
+            properties=TABLE_PROPERTIES,
+        )
     missing = {
         k: v
         for k, v in METADATA_PROPERTIES.items()

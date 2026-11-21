@@ -112,7 +112,14 @@ def test_expire_deletes_old_metadata(tmp_path: Path) -> None:
     }
     avro = {p.name for p in meta.glob("*.avro")}
     assert avro == live  # only the current snapshot's manifests remain
-    assert len(list(meta.glob("*.metadata.json"))) <= 21
+    jsons = {p.name for p in meta.glob("*.metadata.json")}
+    logged = {Path(e.metadata_file).name for e in table.metadata.metadata_log}
+    assert jsons == logged | {Path(table.metadata_location).name}
+    assert len(jsons) <= 21
+    # A rerun, a fresh start, has nothing to expire: no new files at all.
+    catalog = open_catalog(data_dir, env={})
+    assert sum(expire(catalog, timedelta(seconds=0)).values()) == 0
+    assert {p.name for p in meta.glob("*.metadata.json")} == jsons
 
 
 def test_old_tables_get_metadata_cleanup(tmp_path: Path) -> None:
