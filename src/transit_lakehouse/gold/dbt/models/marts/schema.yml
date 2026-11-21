@@ -1,0 +1,36 @@
+version: 2
+models:
+  - name: fct_stop_arrival
+    description: Realtime trip x passed stop, scheduled against observed.
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [mode, trip_id, start_date, stop_sequence]
+    columns:
+      - name: sched_arrival_utc
+        tests: [not_null]
+      - name: observed_arrival_utc
+        tests: [not_null]
+  - name: fct_trip_outcome
+    description: Scheduled trip x service day outcome with confidence.
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, trip_id]
+    columns:
+      - name: outcome
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [ran, partial, cancelled, never_seen, not_judged]
+  - name: fct_headway
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, route_id, direction_id, stop_id, stop_sequence, trip_id]
+  - name: mart_route_reliability
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, mode, region, route_id, local_hour]

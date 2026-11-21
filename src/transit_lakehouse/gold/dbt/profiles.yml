@@ -1,0 +1,14 @@
+# Written for `python -m transit_lakehouse.gold`, which sets
+# GOLD_DUCKDB_PATH. The memory limit keeps a nightly build beside the
+# collector on the 2 GB host; DuckDB spills to disk above it.
+transit_gold:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('GOLD_DUCKDB_PATH') }}"
+      threads: 1
+      settings:
+        memory_limit: "{{ env_var('GOLD_MEMORY_LIMIT', '300MB') }}"
+        preserve_insertion_order: false
+        threads: "{{ env_var('GOLD_THREADS', '1') }}"

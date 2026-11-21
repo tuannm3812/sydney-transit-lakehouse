@@ -10,7 +10,7 @@ RUN useradd --create-home --uid 1000 collector
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[offload,worker]"
+RUN pip install --no-cache-dir ".[offload,worker,gold]"
 
 COPY config ./config
 USER collector

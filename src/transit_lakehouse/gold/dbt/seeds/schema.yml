@@ -1,0 +1,14 @@
+version: 2
+seeds:
+  - name: network_region
+    description: >
+      Mode and region for each TfNSW network (the `route_desc` of a
+      route in the static timetable). `mixed` networks span Sydney and
+      regional NSW, so a trip's region comes from its first stop and
+      the `sydney_box` var. The bus realtime feed is statewide
+      (docs/9_phase1.md), so the Sydney products filter on region.
+    config:
+      column_types: {network: varchar, mode: varchar, region: varchar}
+    columns:
+      - name: network
+        tests: [unique, not_null]
