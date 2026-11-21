@@ -1,0 +1,28 @@
+version: 2
+# Views over the live Iceberg files, created by
+# transit_lakehouse.gold.views before every build (D-027 to D-030).
+sources:
+  - name: bronze
+    schema: bronze
+    tables:
+      - name: snapshot
+  - name: silver
+    schema: silver
+    tables:
+      - name: trip_status
+      - name: stop_prediction
+        description: >
+          Change-only, stored against the trip delay (D-028): the
+          prediction at a later moment is the latest row shifted by the
+          change in `trip_status.current_delay_s` since `trip_delay_s`.
+      - name: vehicle_position
+      - name: alert
+      - name: alert_scope
+      - name: timetable_version
+      - name: timetable_agency
+      - name: timetable_route
+      - name: timetable_stop
+      - name: timetable_calendar
+      - name: timetable_calendar_date
+      - name: timetable_trip
+      - name: timetable_pattern_stop

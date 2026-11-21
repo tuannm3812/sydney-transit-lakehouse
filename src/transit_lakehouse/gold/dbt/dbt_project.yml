@@ -1,0 +1,61 @@
+# Gold layer for the Sydney transit lakehouse (Phase 2, D-034).
+# Run through `python -m transit_lakehouse.gold build`, which first
+# points the `bronze` and `silver` schemas at the live Iceberg files.
+name: transit_gold
+version: "0.1.0"
+config-version: 2
+profile: transit_gold
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+flags:
+  send_anonymous_usage_stats: false
+  use_colors: false
+
+vars:
+  # GTFS service days and timetable times are Sydney local (D-006).
+  sydney_tz: "Australia/Sydney"
+  # Optional service-day window, inclusive, as YYYY-MM-DD. Null = all.
+  service_date_from: null
+  service_date_to: null
+  # A feed counts as captured while consecutive snapshots are at most
+  # this far apart (four 30 s trip-update intervals, D-007).
+  coverage_max_gap_s: 120
+  # A trip is judged only when capture covers it from this long before
+  # its scheduled start to this long after its scheduled end; the
+  # Phase 2 plan closes a trip 3 hours after its scheduled end.
+  outcome_lead_minutes: 10
+  outcome_grace_minutes: 180
+  # A trip that got within this many stops of its last stop ran.
+  ran_max_stops_left: 2
+  # On time: no more than this early or late at a stop.
+  on_time_early_s: 60
+  on_time_late_s: 300
+  # Bunched: observed gap below this share of the scheduled gap
+  # (docs/7_data_model.md).
+  bunching_ratio: 0.333
+  # Greater Sydney box for routes whose network spans regions.
+  sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
+
+models:
+  transit_gold:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: gold
+      +materialized: table
+    quality:
+      +schema: gold
+      +materialized: table
+
+seeds:
+  transit_gold:
+    +schema: staging
+
+tests:
+  transit_gold:
+    +severity: error
