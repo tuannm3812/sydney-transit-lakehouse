@@ -178,7 +178,13 @@ def run_loop(
     should_stop: Callable[[], bool],
     **kwargs,
 ) -> None:
-    """Run every ``interval_s`` seconds until ``should_stop()``."""
+    """Run every ``interval_s`` seconds until ``should_stop()``.
+
+    Once an hour, after a run, the closed hours' small files are
+    compacted (compact.py)."""
+    from transit_lakehouse.worker.compact import compact
+
+    compacted_hour = None
     while not should_stop():
         tick = time.monotonic()
         try:
@@ -188,23 +194,45 @@ def run_loop(
             # One bad run must not end the service; the next run starts
             # from the committed watermarks again.
             log.exception("run failed")
+        hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+        if hour != compacted_hour:
+            try:
+                log.info("compact: %s", compact(catalog).summary())
+                compacted_hour = hour
+            except Exception:
+                log.exception("compact failed")
         deadline = tick + interval_s
         while not should_stop() and time.monotonic() < deadline:
             time.sleep(min(1.0, deadline - time.monotonic()))
 
 
+def _data_files(table) -> set[str]:
+    """Every data file any live snapshot of ``table`` points at."""
+    paths: set[str] = set()
+    for snap in table.snapshots():
+        for manifest in snap.manifests(table.io):
+            for entry in manifest.fetch_manifest_entry(table.io):
+                paths.add(entry.data_file.file_path)
+    return paths
+
+
 def expire(catalog: Catalog, older_than: timedelta) -> dict[str, int]:
-    """Expire Iceberg snapshots older than ``older_than``.
+    """Expire Iceberg snapshots older than ``older_than``, and delete the
+    data files that only those snapshots used.
 
     The worker commits about once a minute, so without expiry the table
-    metadata grows by ~1,440 snapshots a day. The current snapshot is
-    always kept.
+    metadata grows by ~1,440 snapshots a day; and compaction's merged
+    files stay on disk until the snapshots that point at them go. The
+    current snapshot is always kept.
     """
     cutoff = datetime.now(UTC) - older_than
     out: dict[str, int] = {}
     for name, table in ensure_tables(catalog).items():
         before = len(table.snapshots())
+        files_before = _data_files(table)
         table.maintenance.expire_snapshots().older_than(cutoff).commit()
         table.refresh()
+        for path in sorted(files_before - _data_files(table)):
+            table.io.delete(path)
         out[name] = before - len(table.snapshots())
     return out

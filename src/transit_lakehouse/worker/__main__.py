@@ -4,6 +4,7 @@
     python -m transit_lakehouse.worker run --loop 60   # always-on
     python -m transit_lakehouse.worker expire --older-than 24h
     python -m transit_lakehouse.worker status          # rows, watermarks
+    python -m transit_lakehouse.worker compact         # merge small files
 
     python -m transit_lakehouse.worker --data-dir /tmp/r replay \\
         --bucket B --feed buses_tripupdates --start 2026-11-17T00 \\
@@ -112,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     exp = sub.add_parser("expire", help="expire old Iceberg snapshots")
     exp.add_argument("--older-than", default="24h")
     sub.add_parser("status", help="rows and watermarks per table")
+    cmp = sub.add_parser(
+        "compact",
+        help="merge small files in closed hours (run --loop does this hourly)",
+    )
+    cmp.add_argument("--max-groups", type=int, help="stop after this many")
     rep = sub.add_parser(
         "replay",
         help="rebuild realtime tables from offloaded hour tars into "
@@ -146,6 +152,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "status":
         print(_status(catalog))
+        return 0
+    if args.cmd == "compact":
+        from transit_lakehouse.worker.compact import compact
+
+        with single_run(args.data_dir):
+            print(compact(catalog, max_groups=args.max_groups).summary())
         return 0
     if args.cmd == "expire":
         removed = expire(catalog, parse_window(args.older_than))

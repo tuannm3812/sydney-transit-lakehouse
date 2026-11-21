@@ -53,7 +53,7 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Replay from the hour tars and `verify`: 30 of 30 table-hours identical on real data (R1-01)
 - [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts not yet run on real data
 - [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
-- [ ] Compaction
+- [x] Compaction by closed hour, hourly in `run --loop` (D-032)
 - [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
 - [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
 - [ ] Re-decide the long-term host before the AWS credits run out (D-015)
