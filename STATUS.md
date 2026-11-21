@@ -51,7 +51,7 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Light worker core: bronze snapshot index, silver vehicle positions, stop predictions and trip status in Iceberg (D-027)
 - [x] Real-data dry run on a peak and an overnight hour (R1-01, docs/reports/worker-dryrun-20261119.md)
 - [x] Replay from the hour tars and `verify`: 30 of 30 table-hours identical on real data (R1-01)
-- [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts not yet run on real data
+- [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts replayed on two real hours, 17 Nov 20:00 to 22:00 UTC: 360 rows for 314 alerts, replay identical
 - [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
 - [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: 282 files to 13, rows unchanged, 426 MB peak
 - [x] Memory on Linux (Docker, 900 MB cap): realtime about 530 MB, timetable about 737 MB, no OOM
