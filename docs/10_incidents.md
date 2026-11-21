@@ -33,7 +33,7 @@ Status: **fixed** (a change in the repo or on the server prevents a repeat), **h
 
 | # | Problem | Why it matters | Plan |
 |---|---|---|---|
-| O-01 | No live alert when a feed goes silent or the disk runs low | I-06 was only seen in the next day's 00:05 UTC cron | Add a heartbeat and alert (for example a cron every 5 minutes that checks the last poll per feed and free disk, then notifies Mike). From the Codex review |
+| O-01 | No live alert when a feed goes silent or the disk runs low | I-06 was only seen in the next day's 00:05 UTC cron | `checks watch` every 5 minutes pushes an ntfy alert when a feed has had no success for 4 intervals (at least 2 min) or the disk has less than 10 GB free, then again on recovery (D-034). Closed once the cron and topic are live on the server |
 | O-02 | Outcome labels must reflect coverage | Without it, an outage like I-06 would look like cancelled trips | Gold uses observed / cancelled / unobserved despite coverage / unknown, and excludes windows with missing polls (Codex review, Phase 1) |
 | O-03 | NSW TrainLink and the other light rail lines are unverified | They may need different paths, as I-03 did | Probe before enabling; a decision row if the feed set changes |
 
