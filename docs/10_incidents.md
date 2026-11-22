@@ -28,12 +28,12 @@ Status: **fixed** (a change in the repo or on the server prevents a repeat), **h
 | I-13 | 2026-11-18 | First S3 upload got 403 | Offload blocked for an hour | The IAM policy did not name the bucket | Mike fixed the policy; `offload` now checks bucket access before it runs (PR #12) | fixed |
 | I-14 | 2026-11-18 | 24 h evidence files were silently left out of a commit | The report cited files that weren't in the repo | `docs/reports/*` is gitignored | Curated report files whitelisted (PR #13) | fixed |
 | I-15 | 2026-11-21 | SSH to the collector timed out from the UTS network | Server work waited until Mike was home | The security group allows SSH only from Mike's home IP | Set the SSH rule's Source to "My IP" from a new network, or wait. The collector itself is unaffected (outbound only) | handled |
+| I-16 | 2026-11-22 | No live alert when a feed went silent or the disk ran low (was O-01) | I-06 was only seen in the next day's 00:05 UTC cron | Nothing watched between daily checks | `checks watch` every 5 minutes with ntfy push alerts (D-034), live on the server since 22 Nov; test push and recovery confirmed on Mike's phone at 03:51 UTC | fixed |
 
 ## Open problems
 
 | # | Problem | Why it matters | Plan |
 |---|---|---|---|
-| O-01 | No live alert when a feed goes silent or the disk runs low | I-06 was only seen in the next day's 00:05 UTC cron | `checks watch` every 5 minutes pushes an ntfy alert when a feed has had no success for 4 intervals (at least 2 min) or the disk has less than 10 GB free, then again on recovery (D-034). Closed once the cron and topic are live on the server |
 | O-02 | Outcome labels must reflect coverage | Without it, an outage like I-06 would look like cancelled trips | Gold uses observed / cancelled / unobserved despite coverage / unknown, and excludes windows with missing polls (Codex review, Phase 1) |
 | O-03 | NSW TrainLink and the other light rail lines are unverified | They may need different paths, as I-03 did | Probe before enabling; a decision row if the feed set changes |
 
