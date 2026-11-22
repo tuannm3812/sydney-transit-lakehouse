@@ -36,11 +36,11 @@
 | 24 h report window | 17 Nov 07:12 – 18 Nov 07:12 UTC | 100.00% (all 8 feeds) | ≤ 14 s realtime VP/TU; 86 s alerts | 27,339 requests (46%), 0 limit hits, 4.94 GB/day on disk; runway to about 1 Dec (D-024). Redeployed to `main` 83592ba at 04:06 UTC with no lost polls. |
 | 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; Mike counted day 2 toward the gate (2026-11-21). Fix in D-031. Offload: 36 hourly runs, 801 objects, 0 failed. |
 | 3 | 2026-11-20 | **93.82% (bus TU): FAIL on 10 feeds** | not recorded | Server cron `capture-20261121.json`, 20 Nov 00:05 – 21 Nov 00:05 UTC. **TfNSW outage:** 14:26 – about 15:02 UTC the gateway answered almost every realtime request with 502 "Error collecting requested resource" (662 × 502, 18 network errors), with intermittent 502s until 15:58; longest gaps 1,499 – 2,648 s. Service alerts (99.93%) and the timetable passed. The collector kept polling and recorded every attempt. Also three lone 401s at 10:46 – 10:48 UTC, each a 300 s gap (before the D-031 fix went live). **Mike: strict gate, the 7-day clock restarts (D-033).** |
-| 4 (partial, 13 h) | 2026-11-21 | 99.97% (metro VP, light rail VP); all 12 feeds pass | not recorded | Check over 00:59 – 13:59 UTC, exit 0; longest gap 32 s. Redeployed to 9a8185f at 11:38 UTC (D-031 live). Full day from the 22 Nov 00:05 UTC cron. |
+| 4 | 2026-11-21 | 99.98% (light rail VP); all 12 feeds pass | not recorded | Server cron 21 Nov 00:05 – 22 Nov 00:05 UTC, exit 0. One warning: light rail trip updates unchanged for 27 min overnight (stuck warning, not a failure). Redeployed to 9a8185f at 11:38 UTC (D-031 live). First clean day of the restarted gate (D-033). |
 
 ## Blocked on Mike
 
-- Nothing for Phase 0. The daily prune runs at 01:40 UTC from 2026-11-22 (approved 2026-11-21).
+- Nothing for Phase 0. First daily prune ran 2026-11-22 01:40 UTC: 377 local raw hours deleted after re-checking each in S3, 8.06 GB freed, 0 failed; 58 GB free after (server `docs/reports/offload.log`). Live alerts (D-034) on since 2026-11-22.
 
 ## Reports
 
@@ -55,7 +55,7 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Replay from the hour tars and `verify`: 30 of 30 table-hours identical on real data (R1-01)
 - [x] Static timetable versions (D-029) and Service Alerts history (D-030); alerts replayed on two real hours, 17 Nov 20:00 to 22:00 UTC: 360 rows for 314 alerts, replay identical
 - [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
-- [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: 282 files to 13, rows unchanged, 426 MB peak
+- [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: its 273 files merged into 4, so the bus tables went from 282 files to 13 (the 3 am hour's few files stay as they are), rows unchanged, 426 MB peak
 - [x] Memory on Linux (Docker, 900 MB cap): realtime about 530 MB, timetable about 737 MB, no OOM
 - [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
 - [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
