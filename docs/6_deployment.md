@@ -120,7 +120,11 @@ AWS: t3.small, 30 GB gp3 and a public IPv4 come to about USD 23/month (the USD 1
 `checks watch` runs every 5 minutes and pushes a phone alert when a feed goes silent (no successful poll for 4 intervals) or the disk drops below 10 GB free. It alerts again when the problem clears, and reminds you every 3 hours while one stays open.
 
 1. Install the **ntfy** app (iOS or Android) and subscribe to a new topic with a long random name, for example `transit-` followed by 20 random letters. Anyone who knows the name can read the alerts, so treat it like a password.
-2. On the server, add `ALERT_NTFY_TOPIC=<that name>` to `.env` yourself.
+2. On the server, add the topic to `.env` yourself. Start with a newline, in case `.env` doesn't end with one (otherwise the line is glued onto the API key line, I-17), then list the variable names, which never shows values:
+
+   ```
+   printf '\nALERT_NTFY_TOPIC=%s\n' 'YOUR_TOPIC' >> .env && cut -d= -f1 .env
+   ```
 3. Add the cron line (new servers get it from `scripts/bootstrap_vm.sh`):
 
    ```
