@@ -29,6 +29,7 @@ Status: **fixed** (a change in the repo or on the server prevents a repeat), **h
 | I-14 | 2026-11-18 | 24 h evidence files were silently left out of a commit | The report cited files that weren't in the repo | `docs/reports/*` is gitignored | Curated report files whitelisted (PR #13) | fixed |
 | I-15 | 2026-11-21 | SSH to the collector timed out from the UTS network | Server work waited until Mike was home | The security group allows SSH only from Mike's home IP | Set the SSH rule's Source to "My IP" from a new network, or wait. The collector itself is unaffected (outbound only) | handled |
 | I-16 | 2026-11-22 | No live alert when a feed went silent or the disk ran low (was O-01) | I-06 was only seen in the next day's 00:05 UTC cron | Nothing watched between daily checks | `checks watch` every 5 minutes with ntfy push alerts (D-034), live on the server since 22 Nov; test push and recovery confirmed on Mike's phone at 03:51 UTC | fixed |
+| I-17 | 2026-11-22 | The alert topic line appended to the server's `.env` landed on the same line as the API key | The key line was corrupted on disk; the running collector was unaffected (it loaded the key at start) but would have failed at its next restart | `.env` had no trailing newline, so `echo ... >> .env` glued the new variable onto the last line | Mike split the line with `sed` and checked variable names only; docs now append with a newline guard (`printf '\nNAME=%s\n' value >> .env`) and check with `cut -d= -f1 .env` | fixed |
 
 ## Open problems
 
