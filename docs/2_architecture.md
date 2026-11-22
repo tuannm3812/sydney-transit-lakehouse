@@ -34,6 +34,10 @@ See D-005. The Phase 0 gate is about the source: can we capture it at 99% within
 
 `python -m transit_lakehouse.worker run --loop 60` reads new raw files since each table's watermark, diffs each against the snapshot before it, and commits `bronze.snapshot` and the silver tables to Iceberg (SQLite catalog, warehouse under `data/lakehouse/`). The plan and work items are in docs/9_phase1.md.
 
+## Phase 2: gold marts (D-035)
+
+`python -m transit_lakehouse.gold build` points DuckDB views at each silver table's live Parquet files (listed by PyIceberg), runs dbt into `data/gold/transit.duckdb` and records every test in `gold.dq_results`. The plan and work items are in docs/11_phase2.md.
+
 ## Target (Phase 1+)
 
 The collector also produces each new snapshot to Redpanda (one topic per feed kind, keyed by feed). Spark Structured Streaming decodes the protobuf into bronze Iceberg tables (vehicle positions, trip-update stop time events) on object storage, and silver/gold models are built incrementally with dbt on DuckDB. The products read gold. The details wait on the plan document (D-012).

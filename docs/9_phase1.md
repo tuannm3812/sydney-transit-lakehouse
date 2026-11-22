@@ -30,7 +30,7 @@ All tables are partitioned by `obs_date` (the UTC date of the poll, D-006) and `
 |---|---|---|
 | `bronze.snapshot` | landed raw file | Always written. Fetch time, header time, entity count, failed entities, decode error, rows emitted, ingest time. The lineage and latency table. |
 | `silver.stop_prediction` | stop × change | Written when a stop's prediction changes *relative to its trip's delay* (or its status or scheduled time changes), or the stop is new. A whole trip running later is one `trip_status` row, not a row per remaining stop (D-028). `trip_delay_s` is the trip delay the row was written against. |
-| `silver.trip_status` | trip × change | Written when the trip's status, route, vehicle, current delay (`current_delay_s`, its first listed stop's delay), start time or stop count changes. |
+| `silver.trip_status` | trip × change | Written when the trip's status, route, vehicle, current delay (`current_delay_s`, its first listed stop's delay), start time or stop count changes, and as a `REMOVED` row with stop count 0 when the trip leaves the feed (D-036). |
 | `silver.vehicle_position` | vehicle report | Written when the vehicle's own timestamp changes (two polls of one report are one event). Implausible readings are kept with `quarantined = true` and a reason: no position, outside NSW, faster than 150 km/h, or a timestamp more than 10 minutes ahead. |
 
 ## Running it

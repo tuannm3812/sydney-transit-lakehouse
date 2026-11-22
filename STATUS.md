@@ -44,7 +44,7 @@
 
 ## Reports
 
-Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run.
+Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run, R2-01 gold marts dry run (interim).
 
 ## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
 
@@ -60,3 +60,15 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
 - [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
 - [ ] Re-decide the long-term host before the AWS credits run out (D-015)
+
+## Phase 2, started 2026-11-21 on branches (docs/11_phase2.md)
+
+Built on silver tables replayed from real hour tars; nothing is deployed. Gate: the data-quality page green for 7 straight days.
+
+- [x] dbt on DuckDB over the silver Iceberg files, results recorded in `gold.dq_results` (D-035)
+- [x] Stop arrivals, headways, trip outcomes and the route reliability mart; 33 of 33 dbt nodes pass on two real bus hours (R2-01)
+- [x] Quality tests: 99.7% trip match, arrivals a median 48 m from the bus's position, 99.95% timetable agreement (R2-01)
+- [x] After-midnight trips: TfNSW dates them by calendar day; gold moves them to their service day (D-035)
+- [x] Record when a trip leaves the feed in silver (Mike, 22 Nov, D-036): 4,716 last-stop arrivals on the real hours
+- [ ] Operator coverage for ghost rates, excess wait time, incremental nightly builds
+- [ ] **After the worker is live:** a full day of every mode, then the volume test and the public quality page

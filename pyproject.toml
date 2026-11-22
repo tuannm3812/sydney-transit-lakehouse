@@ -20,9 +20,17 @@ worker = [  # D-027, D-029
     "duckdb>=1.1,<3",
     "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
 ]
+gold = [  # Phase 2 marts, D-035
+    "dbt-core>=1.10,<2",
+    "dbt-duckdb>=1.9,<2",
+    "duckdb>=1.1,<3",
+    "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
+]
 report = ["markdown-it-py>=3,<5"]  # PDF reports, docs/reports/README.md
 dev = [
     "boto3>=1.35",
+    "dbt-core>=1.10,<2",
+    "dbt-duckdb>=1.9,<2",
     "markdown-it-py>=3,<5",
     "duckdb>=1.1,<3",
     "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
@@ -40,6 +48,7 @@ transit-quota-report = "transit_lakehouse.checks.quota_report:main"
 transit-offload = "transit_lakehouse.offload.__main__:main"
 transit-worker = "transit_lakehouse.worker.__main__:main"
 transit-report = "transit_lakehouse.reports.__main__:main"
+transit-gold = "transit_lakehouse.gold.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transit_lakehouse"]

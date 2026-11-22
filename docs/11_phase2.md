@@ -1,0 +1,61 @@
+# 11. Phase 2 plan: reliability marts
+
+*2026-11-21. Decision: D-035. First report: R2-01 (docs/reports/marts-dryrun-20261121.md).*
+
+Phase 2 turns the silver tables into small gold answer tables with dbt on DuckDB, and puts data-quality tests behind them that anyone can see. Work starts now on branches, on silver tables replayed from real hour tars, while the Phase 0 capture run finishes. Nothing here touches the collector host.
+
+**Gate (from the plan):** the data-quality page is green for 7 straight days.
+
+## How it runs
+
+```bash
+pip install -e ".[gold]"
+python -m transit_lakehouse.gold build      # views over silver, then dbt build
+python -m transit_lakehouse.gold dq         # last build's results
+python -m transit_lakehouse.gold views      # views only, for ad hoc DuckDB
+```
+
+It reads the lakehouse under `DATA_DIR` as the worker writes it and writes `DATA_DIR/gold/transit.duckdb`, with dbt's target and logs beside it. `--vars` takes dbt variables as JSON (service-day window, grace, thresholds; see `dbt_project.yml`). `GOLD_MEMORY_LIMIT` and `GOLD_THREADS` set DuckDB's limits (300 MB, 1). On the host it runs as `docker compose --profile gold run --rm gold build`.
+
+The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the Docker image carries it.
+
+## Models
+
+| Layer | Model | One row per | Notes |
+|---|---|---|---|
+| staging | `stg_service_day` | service day | UTC origin of the GTFS clock; timetable version in effect |
+| staging | `stg_scheduled_trip` | scheduled trip × service day | calendar and exceptions applied; mode, region, UTC start and end |
+| staging | `stg_rt_trip_state` | realtime trip state | service day fixed for after-midnight trips (D-035) |
+| staging | `stg_pattern_stop` | pattern stop | position from the end, to tell which stops a trip has passed |
+| staging | `stg_capture_window` | stretch of capture per feed | outcomes are judged only inside one |
+| gold | `fct_stop_arrival` | realtime trip × passed stop | scheduled and observed time, delay, method |
+| gold | `fct_trip_outcome` | scheduled trip × service day | ran, partial, cancelled, never_seen or not_judged, with confidence |
+| gold | `fct_headway` | consecutive trips at a stop | observed and scheduled gap, bunched flag |
+| gold | `mart_route_reliability` | route × service day × local hour | outcomes, on-time share, delay, bunched share |
+| quality | `dq_trip_match`, `dq_stop_arrival`, `dq_arrival_position`, `dq_position_plausibility` | service day × mode | shares tested against the bars in D-035 |
+| quality | `gold.dq_results` | dbt node × build | every model and test result, for the quality page |
+
+## Work items
+
+| # | Item | Status | Waits for |
+|---|---|---|---|
+| 1 | **dbt on DuckDB over silver** (`transit_lakehouse.gold`, D-035) | built, R2-01 | nothing |
+| 2 | **Stop arrivals and headways** (`fct_stop_arrival`, `fct_headway`) | built; arrivals checked against positions (R2-01) | nothing |
+| 3 | **Trip outcomes** (`fct_trip_outcome`) | built; judged on 283 trips only | a full day of every mode |
+| 4 | **Route reliability mart** | built without excess wait time | item 9 |
+| 5 | **Quality tests**: match rate, delay sanity, timetable agreement, arrival position, plausibility | built, all pass on two real hours | nothing |
+| 6 | **`dq_results` table** | built | nothing |
+| 7 | **Trip left the feed** in silver (`REMOVED` row in `trip_status`, D-036), for last-stop arrivals and when a trip vanished | built (Mike, 22 Nov); R2-01 section 3.7 | nothing |
+| 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | planned | nothing |
+| 9 | **Excess wait time** from headways | planned | nothing |
+| 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned | the worker live on the host |
+| 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
+| 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
+| 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
+
+## Open risks
+
+- **Other modes are untested.** Trains, metro, light rail and ferry trip ids may join the complete timetable less well than buses. `dq_trip_match` reports it per mode on the first full day.
+- **Gold and the worker share 2 GB with the collector.** Each is capped at 900 MB; they should not run at the same time (R2-01).
+- **Expiry can delete a file a build is reading.** The worker's hourly expiry removes files that compaction replaced. A build reads the file list at its start, so it should run well clear of the compaction hour, or under a shared lock (item 10).
+- **"Never seen" is not "did not run".** Public wording stays "timetable honesty" (docs/7_data_model.md); most never-seen trips in R2-01 belong to operators without realtime at all.

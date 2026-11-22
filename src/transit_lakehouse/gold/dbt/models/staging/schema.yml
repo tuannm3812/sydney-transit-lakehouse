@@ -1,0 +1,14 @@
+version: 2
+models:
+  - name: stg_service_day
+    columns:
+      - name: service_date
+        tests: [unique, not_null]
+  - name: stg_scheduled_trip
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, trip_id]
+  - name: stg_capture_window
+  - name: stg_pattern_stop
+  - name: stg_rt_trip_state

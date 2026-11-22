@@ -148,8 +148,18 @@ def test_change_only_rows(data_dir: Path) -> None:
         ("C", 1): 1,
     }
     trips = rows(catalog, "silver.trip_status")
-    # A and B new, nothing changes until C appears (A's stop count same).
-    assert sorted(r["trip_id"] for r in trips) == ["A", "B", "C"]
+    # A and B new, nothing changes until C appears (A's stop count same)
+    # and B leaves the feed, which writes a REMOVED row (D-036).
+    got = sorted((r["trip_id"], r["trip_status"]) for r in trips)
+    assert got == [
+        ("A", "SCHEDULED"),
+        ("B", "REMOVED"),
+        ("B", "SCHEDULED"),
+        ("C", "SCHEDULED"),
+    ]
+    [gone] = [r for r in trips if r["trip_status"] == "REMOVED"]
+    assert (gone["stop_count"], gone["current_delay_s"]) == (0, 60)
+    assert gone["route_id"] == "R1"
 
     vehicles = rows(catalog, "silver.vehicle_position")
     # v1 is new, repeats, then moves; v2 is new, then a 180 km/h report.
@@ -220,7 +230,7 @@ def test_crash_between_table_commits_does_not_duplicate(
     run_once(data_dir, catalog, [TU_FEED])
     assert rows(catalog, "silver.stop_prediction") == expected
     assert len(rows(catalog, "bronze.snapshot")) == len(files)
-    assert len(rows(catalog, "silver.trip_status")) == 3
+    assert len(rows(catalog, "silver.trip_status")) == 4
 
 
 def test_new_files_continue_from_the_watermark(data_dir: Path) -> None:
@@ -285,6 +295,22 @@ def test_corrupt_file_is_recorded_not_skipped(data_dir: Path) -> None:
     [row] = rows(catalog, "bronze.snapshot")
     assert row["decode_error"].startswith("read_error")
     assert row["entities"] == 0
+
+
+def test_unreadable_file_does_not_end_every_trip(data_dir: Path) -> None:
+    ts = int(T0.timestamp())
+    good, _ = land(
+        data_dir,
+        TU_FEED.name,
+        [tu_bytes(ts, {"A": [0, 30]}), tu_bytes(ts + 30, {"A": [0, 30]})],
+    )
+    bad = data_dir / good.replace(".pb.gz", "").replace("T020000", "T020015")
+    bad = bad.with_name(bad.name + ".pb.gz")
+    bad.write_bytes(b"not gzip")  # lands between the two good files
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [TU_FEED])
+    trips = rows(catalog, "silver.trip_status")
+    assert "REMOVED" not in {r["trip_status"] for r in trips}
 
 
 def test_quarantine_rules() -> None:

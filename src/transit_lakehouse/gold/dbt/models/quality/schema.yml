@@ -1,0 +1,38 @@
+version: 2
+models:
+  - name: dq_trip_match
+    description: Realtime trips that match the day's timetable (target 95%).
+    columns:
+      - name: match_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.95}
+  - name: dq_stop_arrival
+    columns:
+      - name: delay_sane_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.99}
+      - name: schedule_agree_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.95}
+      - name: before_exit_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.95}
+  - name: dq_position_plausibility
+    columns:
+      - name: plausible_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.99}
+  - name: dq_arrival_position
+    description: >
+      Observed arrivals checked against vehicle positions: the share
+      with the bus within 150 m of the stop (target 90%).
+    columns:
+      - name: within_150m_share
+        tests:
+          - share_at_least:
+              arguments: {threshold: 0.9}

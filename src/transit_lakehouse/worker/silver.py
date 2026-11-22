@@ -8,7 +8,11 @@ only what changed:
   or stop status differs from the same stop in the previous snapshot of
   the feed, or the stop is new.
 - ``trip_status``: a row when a trip's status, route, vehicle or
-  trip-level delay differs from the previous snapshot, or it is new.
+  trip-level delay differs from the previous snapshot, or it is new,
+  and a ``REMOVED`` row (stop count 0) when a trip in the previous
+  snapshot is missing from this one (D-036). A snapshot that failed to
+  decode writes no ``REMOVED`` rows, so a bad file never ends every
+  trip at once.
 - ``vehicle_position``: a row when a vehicle's own timestamp differs
   from the previous snapshot (two polls of the same report are one
   event), or the vehicle is new. Implausible readings are kept but
@@ -52,6 +56,9 @@ NSW_BOX = (-38.0, -28.0, 140.5, 154.0)  # min lat, max lat, min lon, max lon
 MAX_FUTURE_S = 600
 
 TU = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate
+# trip_status of the row written when a trip leaves the feed (D-036);
+# not a GTFS-realtime status, so it cannot collide with one.
+REMOVED = "REMOVED"
 
 
 def mode_of(feed: str) -> str:
@@ -266,6 +273,8 @@ class FeedDiffer:
         self.mode = mode_of(feed)
         self.prev_stops: dict[tuple, tuple] = {}
         self.prev_trips: dict[tuple, tuple] = {}
+        # start time, route and direction of each trip, for REMOVED rows
+        self.prev_trip_info: dict[tuple, tuple] = {}
         self.prev_vehicles: dict[str, tuple] = {}
         self.prev_alerts: dict[str, str] = {}
 
@@ -316,6 +325,7 @@ class FeedDiffer:
     def _trip_updates(self, snap: Snapshot, out: Rows | None, emit) -> int:
         stops: dict[tuple, tuple] = {}
         trips: dict[tuple, tuple] = {}
+        info: dict[tuple, tuple] = {}
         observed = _ts(snap.header_ts)
         obs_date = snap.fetched_at.date()
         want_stops = out is not None and emit("silver.stop_prediction")
@@ -374,6 +384,7 @@ class FeedDiffer:
                 base,
             )
             trips[tkey] = tvalue
+            info[tkey] = (trip.start_time, trip.route_id, direction)
             if want_trips and self.prev_trips.get(tkey) != tvalue:
                 emitted += 1
                 out.trips.add(
@@ -397,7 +408,32 @@ class FeedDiffer:
                     obs_date,
                     snap.source_file,
                 )
+        if want_trips and not snap.decode_error:
+            for tkey in sorted(set(self.prev_trips) - set(trips)):
+                # status, route, vehicle, delay, start, stops, base
+                _, _, vehicle, delay, _, _, base = self.prev_trips[tkey]
+                start_time, route_id, direction = self.prev_trip_info[tkey]
+                emitted += 1
+                out.trips.add(
+                    self.mode,
+                    self.feed,
+                    tkey[0],
+                    tkey[1] or None,
+                    start_time or None,
+                    route_id or None,
+                    direction,
+                    REMOVED,
+                    vehicle or None,
+                    delay,
+                    base,
+                    0,
+                    observed,
+                    snap.fetched_at,
+                    obs_date,
+                    snap.source_file,
+                )
         self.prev_stops, self.prev_trips = stops, trips
+        self.prev_trip_info = info
         return emitted
 
     def _alerts(self, snap: Snapshot, out: Rows | None, emit) -> int:

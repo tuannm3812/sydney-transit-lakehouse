@@ -1,0 +1,29 @@
+network,mode,region
+Sydney Buses Network,bus,sydney
+Sydney Trains Network,train,sydney
+Sydney Metro Network,metro,sydney
+Sydney Ferries Network,ferry,sydney
+Sydney Light Rail Network,lightrail,sydney
+Parramatta Light Rail Network,lightrail,sydney
+School buses,bus,mixed
+Temporary buses,bus,mixed
+Temporary coaches,coach,mixed
+Private bus services,bus,mixed
+Private coach services,coach,mixed
+Private ferry and fast ferry services,ferry,mixed
+Sydney and Surrounds Network,bus,mixed
+Intercity Trains Network,train,mixed
+Regional Trains and Coaches Network,nswtrains,regional
+Blue Mountains Buses Network,bus,regional
+Central Coast Buses Network,bus,regional
+Hunter Buses Network,bus,regional
+Newcastle and Hunter Network,bus,regional
+Newcastle Light Rail Network,lightrail,regional
+Newcastle Ferries,ferry,regional
+Illawarra Buses Network,bus,regional
+North Coast Network,bus,regional
+Central West and Orana Network,bus,regional
+South East and Tablelands Network,bus,regional
+Riverina Murray Network,bus,regional
+New England North West Network,bus,regional
+Far West Network,bus,regional
