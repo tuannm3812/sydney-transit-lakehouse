@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import sys
 
-from transit_lakehouse.checks import capture, profile, quota_report, watch
+from transit_lakehouse.checks import (
+    capture,
+    gate_report,
+    profile,
+    quota_report,
+    watch,
+)
 
 COMMANDS = {
     "capture": capture.main,
     "quota": quota_report.main,
     "profile": profile.main,
     "watch": watch.main,
+    "gate-report": gate_report.main,
 }
 
 
@@ -19,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] not in COMMANDS:
         print(
             "usage: python -m transit_lakehouse.checks "
-            "capture|quota|profile|watch ..."
+            "capture|quota|profile|watch|gate-report ..."
         )
         return 2
     return COMMANDS[argv[0]](argv[1:])
