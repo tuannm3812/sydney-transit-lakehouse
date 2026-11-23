@@ -162,6 +162,10 @@ def replay(
                 (data_dir / older).unlink()
             marks = {feed.name: seed[-1]}
             for name in TABLES_FOR_KIND[feed.kind]:
+                # An earlier feed's run committed to this table through
+                # its own handle; a stale one makes PyIceberg try to
+                # delete metadata files that are already gone.
+                tables[name].refresh()
                 empty = {f.name: [] for f in tables[name].schema().as_arrow()}
                 commit(name, tables[name], empty, marks)
         for hour in hours(start, end):
@@ -195,25 +199,32 @@ class Difference:
 
 
 def _digest(con, catalog: Catalog, table: str, feed: str, hour: datetime):
+    """Row count and an order-free content digest of one table, feed and
+    hour. DuckDB reads the Parquet files itself, under its memory limit,
+    so a peak bus hour fits the worker's cap: going through PyIceberg's
+    Arrow reader decoded whole files at once and was OOM-killed at
+    700 MB on the server rehearsal (2026-11-23)."""
     tbl = catalog.load_table(table)
     cols = [
         f.name for f in tbl.schema().fields if f.name not in IGNORED_COLUMNS
     ]
+    lo, hi = hour, hour + timedelta(hours=1)
     row_filter = And(
         EqualTo("feed", feed),
         And(
-            GreaterThanOrEqual("fetched_at", hour.isoformat()),
-            LessThan("fetched_at", (hour + timedelta(hours=1)).isoformat()),
+            GreaterThanOrEqual("fetched_at", lo.isoformat()),
+            LessThan("fetched_at", hi.isoformat()),
         ),
     )
-    reader = tbl.scan(
-        row_filter=row_filter, selected_fields=tuple(cols)
-    ).to_arrow_batch_reader()
-    cur = con.cursor()  # its own result, closed before the next
-    cur.register("rows_in", reader)
+    tasks = list(tbl.scan(row_filter=row_filter).plan_files())
+    if any(t.delete_files for t in tasks):
+        raise RuntimeError(f"{table}: delete files are not supported here")
+    if not tasks:
+        return 0, 0
     text = ", ".join(
         f"coalesce(CAST(\"{c}\" AS VARCHAR), '\\N')" for c in cols
     )
+    cur = con.cursor()  # its own result, closed before the next
     count, digest = cur.execute(
         f"""
         SELECT count(*),
@@ -221,8 +232,10 @@ def _digest(con, catalog: Catalog, table: str, feed: str, hour: datetime):
                             % 1000000007), 0)
                + coalesce(bit_xor(md5_number_upper(
                      concat_ws('|', {text}))) % 1000000007, 0)
-        FROM rows_in
-        """
+        FROM read_parquet(?, union_by_name = true)
+        WHERE feed = ? AND fetched_at >= ? AND fetched_at < ?
+        """,
+        [[t.file.file_path for t in tasks], feed, lo, hi],
     ).fetchone()
     cur.close()
     return int(count), int(digest)
@@ -241,6 +254,8 @@ def verify(
 
     con = duckdb.connect()
     con.execute("SET memory_limit = '200MB'")
+    con.execute("SET threads = 2")
+    con.execute("SET TimeZone = 'UTC'")
     con.execute("SET enable_progress_bar = false")
     compared, diffs = 0, []
     for feed in feeds:
