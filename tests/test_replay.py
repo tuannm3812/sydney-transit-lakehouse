@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from datetime import timedelta
 from pathlib import Path
@@ -63,7 +64,16 @@ def _bucket(live: Path, root: Path) -> Path:
     return bucket
 
 
-def test_replay_from_tars_matches_live(tmp_path: Path) -> None:
+def test_replay_from_tars_matches_live(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    from transit_lakehouse.worker import tables
+
+    # Few kept versions, so a commit through a stale handle would try to
+    # delete metadata files that are already gone (server rehearsal,
+    # 2026-11-23).
+    for props in (tables.METADATA_PROPERTIES, tables.TABLE_PROPERTIES):
+        monkeypatch.setitem(props, "write.metadata.previous-versions-max", "2")
     live = _live(tmp_path)
     bucket = _bucket(live, tmp_path)
     start, end = T0 + timedelta(hours=1), T0 + timedelta(hours=3)
@@ -71,9 +81,11 @@ def test_replay_from_tars_matches_live(tmp_path: Path) -> None:
     replayed = tmp_path / "replay"
     replayed.mkdir()
     catalog = open_catalog(replayed, env={})
-    stats = rp.replay(
-        rp.LocalTars(bucket), FEEDS, start, end, replayed, catalog
-    )
+    with caplog.at_level(logging.WARNING, logger="pyiceberg"):
+        stats = rp.replay(
+            rp.LocalTars(bucket), FEEDS, start, end, replayed, catalog
+        )
+    assert "Failed to delete" not in caplog.text
     assert stats.hours == 2 * len(FEEDS) and not stats.missing_hours
     # Only the seed snapshot of each feed is left on disk.
     left = list((replayed / "raw").rglob("*.pb.gz"))
