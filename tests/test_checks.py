@@ -304,3 +304,69 @@ def test_undecodable_window_fails(tmp_path: Path) -> None:
     r = _eval(tmp_path)
     assert "freshness unknown: no feed timestamps" in r.failures
     assert any(f.startswith("undecodable payloads") for f in r.failures)
+
+
+def _write_outage(tmp: Path, failed: list[tuple[float, int | None]]):
+    """A clean hour at 15 s with polls 1200-1485 s replaced by failures."""
+    _write_at(tmp, [15 * i for i in range(240) if not 1200 <= 15 * i < 1485])
+    lander = Lander(tmp)
+    for s, status in failed:
+        ts = START + timedelta(seconds=s)
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=status,
+                outcome="network_error" if status is None else "http_error",
+                latency_ms=1,
+            )
+        )
+
+
+def test_upstream_outage_within_allowance_warns(tmp_path: Path) -> None:
+    # D-037: 23 Nov style, 504s and timeouts for under 5 minutes.
+    _write_outage(
+        tmp_path, [(1200 + 30 * i, 504 if i % 2 else None) for i in range(9)]
+    )
+    r = _eval(tmp_path)
+    # Only capture fails, since 5 min is 8% of this 1 h test window.
+    assert [f.split()[0] for f in r.failures] == ["capture"]
+    assert r.upstream_outages == 1
+    assert any("within D-037" in w for w in r.warnings)
+
+
+def test_gap_without_attempts_still_fails(tmp_path: Path) -> None:
+    _write_outage(tmp_path, [])
+    r = _eval(tmp_path)
+    assert any(f.startswith("gap 300s") for f in r.failures)
+    assert r.upstream_outages == 0
+
+
+def test_gap_with_auth_errors_is_not_upstream(tmp_path: Path) -> None:
+    _write_outage(tmp_path, [(1200 + 30 * i, 401) for i in range(9)])
+    assert any(f.startswith("gap ") for f in _eval(tmp_path).failures)
+
+
+def test_upstream_allowance_limits() -> None:
+    from transit_lakehouse.checks.capture import (
+        allowance_breaches,
+        count_outages,
+    )
+
+    t0 = datetime(2026, 11, 23, 2, 35, tzinfo=UTC)
+
+    def gap(start_min: float, mins: float):
+        a = t0 + timedelta(minutes=start_min)
+        return (a, a + timedelta(minutes=mins))
+
+    # Gaps 10 minutes apart are one outage; 25 min total is allowed.
+    near = [gap(0, 5), gap(15, 20)]
+    assert count_outages(near) == 1
+    assert allowance_breaches(near, 1, 7) == ""
+    # 36 minutes in one UTC day is over (I-06 would still fail).
+    assert "min > 30" in allowance_breaches([gap(0, 36)], 1, 7)
+    # Three separate outages in a week are over; two are not.
+    days = [gap(1440 * d, 3) for d in range(3)]
+    assert count_outages(days) == 3
+    assert "3 outages > 2" in allowance_breaches(days, 3, 7)
+    assert allowance_breaches(days[:2], 2, 7) == ""

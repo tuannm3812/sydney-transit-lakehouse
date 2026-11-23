@@ -10,7 +10,7 @@
 6. Write the first cost and scale note once real snapshot sizes are known (GB/day raw, R2 cost, what breaks at 10x).
 7. Phase 1 (after the gate, D-023): a light worker that turns raw snapshots into bronze and silver Iceberg tables, then a Redpanda + Spark Structured Streaming benchmark on the same feeds, replayed from raw, with latency and cost measured against the light worker.
 
-## Gate day (earliest 2026-11-27 16:00 UTC, D-033)
+## Gate day (earliest 2026-11-27 16:00 UTC, D-033, D-037)
 
 Run on the collector host, read-only for the data (needs Mike's SSH approval):
 
@@ -22,4 +22,4 @@ docker compose run --rm checks gate-report --gate-json docs/reports/capture-7d-g
   --out docs/reports/phase0-gate-$(date -u +%Y%m%d).md
 ```
 
-The first command exits 0 only if every feed passes. The second writes report R0-02 as a Draft with the gate table and one row per daily check filled in. Then: copy the draft and the gate JSON into the repo, write the Findings by hand, set the status to Final, render the PDF (`python -m transit_lakehouse.reports <file> --out <dir>`), add the gate decision row, tick the gate in STATUS.md, and update both decks. If the gate fails, the report says which feed and why; log the incident (docs/10_incidents.md) and decide with Mike whether the clock restarts, as on day 3.
+The first command exits 0 only if every feed passes; upstream outages within the D-037 allowance show as warnings, so the server must run a commit that includes D-037. The second writes report R0-02 as a Draft with the gate table and one row per daily check filled in. Then: copy the draft and the gate JSON into the repo, write the Findings by hand, set the status to Final, render the PDF (`python -m transit_lakehouse.reports <file> --out <dir>`), add the gate decision row, tick the gate in STATUS.md, and update both decks. If the gate fails, the report says which feed and why; log the incident (docs/10_incidents.md) and decide with Mike whether the clock restarts, as on day 3.
