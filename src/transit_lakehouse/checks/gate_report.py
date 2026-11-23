@@ -56,6 +56,8 @@ def _feed_rows(feeds: list[dict]) -> list[str]:
     rows = []
     for f in feeds:
         status = "Pass" if not f["failures"] else "Fail"
+        if f.get("upstream_outages") and not f["failures"]:
+            status += " (upstream outage allowed, D-037)"
         p95 = f["freshness_p95_s"]
         rows.append(
             f"| `{f['feed']}` | {f['capture_rate']:.2%} "
@@ -179,7 +181,10 @@ def build(
         "",
         "The gate needs, for every enabled feed, capture of at least 99% of "
         "scheduled polls, no gap over four intervals, known freshness and "
-        "full history for the window (D-022). Out of scope: the tables "
+        "full history for the window (D-022). A gap TfNSW caused (every "
+        "attempt a 5xx or network error while the collector kept polling) "
+        "is allowed up to 30 minutes a day and 2 outages a week (D-037). "
+        "Out of scope: the tables "
         "built from the data (Phase 1).",
         "",
         "## Results",

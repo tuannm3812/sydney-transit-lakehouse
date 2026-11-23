@@ -18,6 +18,11 @@ Definitions (see docs/3_decisions.md D-007):
 * stuck = a realtime feed returning the same sha256 for more than
   5 minutes. It is a warning, not a failure (D-019): the gateway is up
   but upstream may have frozen, which only TfNSW can fix.
+* upstream gap = a gap over the gap limit in which the collector kept
+  polling and every attempt failed on TfNSW's side (a 5xx or a network
+  error such as a read timeout). Within the allowance of D-037 (at most
+  30 minutes a UTC day and 2 outages a week) it is a warning, not a
+  failure; capture must still reach 99%. Any other long gap fails.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from transit_lakehouse.checks.manifest import (
     read_polls,
 )
 from transit_lakehouse.collector.config import Feed, load_feeds
+from transit_lakehouse.collector.policy import MAX_BACKOFF_S
 
 CAPTURE_SLA = 0.99
 FRESHNESS_P95_SLA_S = {
@@ -53,6 +59,12 @@ STUCK_AFTER_S = 300.0
 STALE_AFTER_INTERVALS = 4
 # Partial decodes (D-020) still give a timestamp; full failures do not.
 INVALID_PAYLOAD_LIMIT = 0.01
+# D-037: bounded allowance for upstream (TfNSW) outages.
+UPSTREAM_DAILY_LIMIT_S = 1800.0
+UPSTREAM_WEEKLY_OUTAGES = 2
+# Upstream gaps closer together than this are one outage (I-06 had
+# intermittent 502s for an hour after the main drop).
+OUTAGE_MERGE_S = 1800.0
 
 
 @dataclass
@@ -70,6 +82,8 @@ class FeedResult:
     failures: list[str]
     longest_unchanged_s: float | None = None
     warnings: list[str] = field(default_factory=list)
+    upstream_outages: int = 0
+    upstream_gap_s: float = 0.0
 
     @property
     def passed(self) -> bool:
@@ -121,8 +135,36 @@ def evaluate_feed(
     ):
         failures.append("stale: no recent successful poll")
     gap_limit = STALE_AFTER_INTERVALS * feed.interval_s
-    if gaps and max(gaps) > gap_limit:
-        failures.append(f"gap {max(gaps):.0f}s > {gap_limit:.0f}s")
+    spans = list(itertools.pairwise(times))
+    if times:
+        spans.append((effective_start, times[0]))
+    long_spans = sorted(
+        (a, b) for a, b in spans if (b - a).total_seconds() > gap_limit
+    )
+    own = [
+        (a, b)
+        for a, b in long_spans
+        if not is_upstream_gap(polls, a, b, feed.interval_s)
+    ]
+    upstream = [g for g in long_spans if g not in own]
+    if own:
+        worst = max((b - a).total_seconds() for a, b in own)
+        failures.append(f"gap {worst:.0f}s > {gap_limit:.0f}s")
+    window_days = (end - effective_start).total_seconds() / 86400
+    outages = count_outages(upstream)
+    upstream_s = sum((b - a).total_seconds() for a, b in upstream)
+    upstream_note: str | None = None
+    if upstream:
+        over = allowance_breaches(upstream, outages, window_days)
+        longest_up = max((b - a).total_seconds() for a, b in upstream)
+        note = (
+            f"upstream outage: {outages} outage(s), "
+            f"{upstream_s / 60:.1f} min, longest gap {longest_up:.0f}s"
+        )
+        if over:
+            failures.append(f"{note}; over D-037 allowance ({over})")
+        else:
+            upstream_note = f"{note}; within D-037 allowance"
     if feed.is_realtime and ok_polls:
         if not ages:
             failures.append("freshness unknown: no feed timestamps")
@@ -141,6 +183,8 @@ def evaluate_feed(
 
     longest = longest_unchanged_s(ok_polls) if feed.is_realtime else None
     warnings: list[str] = []
+    if upstream_note:
+        warnings.append(upstream_note)
     if longest is not None and longest > STUCK_AFTER_S:
         warnings.append(f"stuck: same snapshot for {longest:.0f}s")
 
@@ -158,7 +202,72 @@ def evaluate_feed(
         failures=failures,
         longest_unchanged_s=longest,
         warnings=warnings,
+        upstream_outages=outages,
+        upstream_gap_s=round(upstream_s, 1),
     )
+
+
+def is_upstream_gap(
+    polls: list[Poll], start: datetime, end: datetime, interval_s: float
+) -> bool:
+    """True when TfNSW, not the collector, caused the gap.
+
+    The collector must have kept trying (no silence longer than its
+    longest backoff plus one interval) and every attempt in between
+    must have failed with a 5xx or a network error.
+    """
+    inside = [p for p in polls if start < p.fetched_at < end]
+    if not inside:
+        return False
+    if any(not (p.status is None or p.status >= 500) or p.ok for p in inside):
+        return False
+    marks = [start, *(p.fetched_at for p in inside), end]
+    silence = max(
+        (b - a).total_seconds() for a, b in itertools.pairwise(marks)
+    )
+    return silence <= MAX_BACKOFF_S + interval_s
+
+
+def count_outages(gaps: list[tuple[datetime, datetime]]) -> int:
+    """Upstream gaps within OUTAGE_MERGE_S of each other are one outage."""
+    count, last_end = 0, None
+    for a, b in sorted(gaps):
+        if last_end is None or (a - last_end).total_seconds() > (
+            OUTAGE_MERGE_S
+        ):
+            count += 1
+        last_end = b if last_end is None else max(last_end, b)
+    return count
+
+
+def allowance_breaches(
+    gaps: list[tuple[datetime, datetime]], outages: int, window_days: float
+) -> str:
+    """Describe how upstream gaps exceed D-037, or return ''."""
+    per_day: dict[str, float] = {}
+    for a, b in gaps:
+        cur = a
+        while cur < b:
+            nxt = min(
+                b,
+                (cur + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ),
+            )
+            key = f"{cur:%Y-%m-%d}"
+            per_day[key] = per_day.get(key, 0.0) + (nxt - cur).total_seconds()
+            cur = nxt
+    reasons = [
+        f"{day} {secs / 60:.0f} min > {UPSTREAM_DAILY_LIMIT_S / 60:.0f}"
+        for day, secs in sorted(per_day.items())
+        if secs > UPSTREAM_DAILY_LIMIT_S
+    ]
+    weeks = max(1, math.ceil(window_days / 7 - 1e-9))
+    if outages > UPSTREAM_WEEKLY_OUTAGES * weeks:
+        reasons.append(
+            f"{outages} outages > {UPSTREAM_WEEKLY_OUTAGES * weeks}"
+        )
+    return "; ".join(reasons)
 
 
 def longest_unchanged_s(ok_polls: list[Poll]) -> float | None:
