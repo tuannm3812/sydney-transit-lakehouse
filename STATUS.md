@@ -1,6 +1,6 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-21 (after the day 3 outage).*
+*Rewritten in place. Last updated 2026-11-23 (day 5, TfNSW outage I-18).*
 
 **Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
@@ -37,9 +37,11 @@
 | 2 | 2026-11-19 | 99.58% (service alerts); all 12 feeds ≥ 99% | not recorded | Server cron 19 Nov 00:05 – 20 Nov 00:05 UTC. **Gap rule failed on 4 feeds** (train VP 315 s, metro TU 330 s, alerts 360 s, light rail VP 315 s): a one-off TfNSW 401 on each at 14:44–14:45 UTC while the other 8 feeds got 200s on the same key, and each 401 triggered a 300 s backoff. Logged as an upstream incident; Mike counted day 2 toward the gate (2026-11-21). Fix in D-031. Offload: 36 hourly runs, 801 objects, 0 failed. |
 | 3 | 2026-11-20 | **93.82% (bus TU): FAIL on 10 feeds** | not recorded | Server cron `capture-20261121.json`, 20 Nov 00:05 – 21 Nov 00:05 UTC. **TfNSW outage:** 14:26 – about 15:02 UTC the gateway answered almost every realtime request with 502 "Error collecting requested resource" (662 × 502, 18 network errors), with intermittent 502s until 15:58; longest gaps 1,499 – 2,648 s. Service alerts (99.93%) and the timetable passed. The collector kept polling and recorded every attempt. Also three lone 401s at 10:46 – 10:48 UTC, each a 300 s gap (before the D-031 fix went live). **Mike: strict gate, the 7-day clock restarts (D-033).** |
 | 4 | 2026-11-21 | 99.98% (light rail VP); all 12 feeds pass | not recorded | Server cron 21 Nov 00:05 – 22 Nov 00:05 UTC, exit 0. One warning: light rail trip updates unchanged for 27 min overnight (stuck warning, not a failure). Redeployed to 9a8185f at 11:38 UTC (D-031 live). First clean day of the restarted gate (D-033). |
+| 5 | 2026-11-22 | 100.00% (all 12 feeds) | not recorded | Server cron 22 Nov 00:05 – 23 Nov 00:05 UTC; longest gap 33 s. Second clean day of the restarted gate (D-033). Prune 23 Nov: 266 hours (4.70 GB) removed, 0 failed; uploads 0 failed; 59 GB free. Next day (23 Nov) holds TfNSW outage I-18; its gate treatment awaits Mike. |
 
 ## Blocked on Mike
 
+- **Gate treatment of upstream outages (I-18).** TfNSW timed out 23 Nov 02:35 – 02:52 UTC; gaps of 164 – 285 s break the 4-interval gap rule on most feeds although capture should stay about 99.5%. Strict (D-033) restarts the clock to about 30 Nov 03:00 UTC; gating on capture with recorded upstream outages logged as incidents keeps about 28 Nov. Decision row D-037 follows Mike's choice.
 - Nothing for Phase 0. First daily prune ran 2026-11-22 01:40 UTC: 377 local raw hours deleted after re-checking each in S3, 8.06 GB freed, 0 failed; 58 GB free after (server `docs/reports/offload.log`). Live alerts (D-034) on since 2026-11-22.
 
 ## Reports
