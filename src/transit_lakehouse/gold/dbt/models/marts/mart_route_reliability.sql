@@ -1,5 +1,8 @@
 -- Route x service day x local hour of scheduled start: trip outcomes,
 -- on-time share and delay at stops, and the bunched share of gaps.
+-- A route of a network that spans regions can have trips of both in
+-- one hour (an intercity line from Central and from Gosford), so stop
+-- and gap figures are grouped by mode and region too, as the trips are.
 with trips as (
     select
         *,
@@ -17,7 +20,8 @@ trip_counts as (
         any_value(agency_name) as agency_name,
         local_hour,
         count(*) as trips_scheduled,
-        count(*) filter (tu_covered) as trips_covered,
+        -- captured from start to grace, by a feed carrying the operator
+        count(*) filter (tu_covered and operator_covered) as trips_covered,
         count(*) filter (outcome <> 'not_judged') as trips_judged,
         count(*) filter (outcome = 'ran') as trips_ran,
         count(*) filter (outcome = 'partial') as trips_partial,
@@ -30,6 +34,8 @@ trip_counts as (
 stops as (
     select
         t.service_date,
+        t.mode,
+        t.region,
         t.route_id,
         t.local_hour,
         count(*) as stop_arrivals,
@@ -46,6 +52,8 @@ stops as (
 gaps as (
     select
         h.service_date,
+        t.mode,
+        t.region,
         h.route_id,
         t.local_hour,
         count(*) as headways,
@@ -67,5 +75,5 @@ select
     g.headways,
     g.bunched_share
 from trip_counts c
-left join stops s using (service_date, route_id, local_hour)
-left join gaps g using (service_date, route_id, local_hour)
+left join stops s using (service_date, mode, region, route_id, local_hour)
+left join gaps g using (service_date, mode, region, route_id, local_hour)

@@ -10,6 +10,13 @@
 -- late running are never read as missing buses. "never_seen" means no
 -- trip update and no vehicle position mentioned the trip; it is not
 -- proof the bus did not run (docs/7_data_model.md).
+--
+-- A mode's feed does not carry every operator of that mode: the
+-- light rail feed is the Inner West line only (agency LR, not L2/L3
+-- or Parramatta), the ferry feed is Sydney Ferries only, and some bus
+-- operators publish no realtime. So a trip can be never_seen only when
+-- another trip of its operator and mode appeared in trip updates that
+-- service day (operator_covered, D-038); otherwise it is not_judged.
 with sched as (
     select * from {{ ref('stg_scheduled_trip') }}
 ),
@@ -93,6 +100,12 @@ base as (
     left join vp on vp.trip_id = j.trip_id and vp.start_date = j.start_date
 ),
 
+operator_seen as (
+    select distinct service_date, mode, agency_id
+    from base
+    where seen_tu
+),
+
 route_seen as (
     select service_date, route_id, count(*) filter (seen_tu or seen_vp) as seen
     from base
@@ -103,16 +116,22 @@ outcome as (
     select
         b.*,
         coalesce(rs.seen, 0) - (b.seen_tu or b.seen_vp)::int as route_trips_seen,
+        os.mode is not null as operator_covered,
         case
             when b.last_status = 'CANCELED' then 'cancelled'
             when b.min_stops_left <= {{ var('ran_max_stops_left') }} then 'ran'
             when (b.seen_tu or b.seen_vp) and b.tu_covered then 'partial'
-            when not (b.seen_tu or b.seen_vp) and b.tu_covered then 'never_seen'
+            when not (b.seen_tu or b.seen_vp) and b.tu_covered
+                and os.mode is not null then 'never_seen'
             else 'not_judged'
         end as outcome
     from base b
     left join route_seen rs
         on rs.service_date = b.service_date and rs.route_id = b.route_id
+    left join operator_seen os
+        on os.service_date = b.service_date
+        and os.mode = b.mode
+        and os.agency_id is not distinct from b.agency_id
 )
 
 select
@@ -145,6 +164,7 @@ select
     seen_vp,
     tu_covered,
     vp_covered,
+    operator_covered,
     first_seen_at,
     last_state_at,
     left_feed_at,

@@ -29,7 +29,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 | staging | `stg_pattern_stop` | pattern stop | position from the end, to tell which stops a trip has passed |
 | staging | `stg_capture_window` | stretch of capture per feed | outcomes are judged only inside one |
 | gold | `fct_stop_arrival` | realtime trip × passed stop | scheduled and observed time, delay, method |
-| gold | `fct_trip_outcome` | scheduled trip × service day | ran, partial, cancelled, never_seen or not_judged, with confidence |
+| gold | `fct_trip_outcome` | scheduled trip × service day | ran, partial, cancelled, never_seen or not_judged, with confidence; never_seen only for an operator with realtime that day (D-038) |
 | gold | `fct_headway` | consecutive trips at a stop | observed and scheduled gap, bunched flag |
 | gold | `mart_route_reliability` | route × service day × local hour | outcomes, on-time share, delay, bunched share |
 | quality | `dq_trip_match`, `dq_stop_arrival`, `dq_arrival_position`, `dq_position_plausibility` | service day × mode | shares tested against the bars in D-035 |
@@ -46,7 +46,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 | 5 | **Quality tests**: match rate, delay sanity, timetable agreement, arrival position, plausibility | built, all pass on two real hours | nothing |
 | 6 | **`dq_results` table** | built | nothing |
 | 7 | **Trip left the feed** in silver (`REMOVED` row in `trip_status`, D-036), for last-stop arrivals and when a trip vanished | built (Mike, 22 Nov); R2-01 section 3.7 | nothing |
-| 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | planned | nothing |
+| 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | built (D-038): same operator and mode seen in trip updates that service day | nothing |
 | 9 | **Excess wait time** from headways | planned | nothing |
 | 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned | the worker live on the host |
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
@@ -58,4 +58,5 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 - **Other modes are untested.** Trains, metro, light rail and ferry trip ids may join the complete timetable less well than buses. `dq_trip_match` reports it per mode on the first full day.
 - **Gold and the worker share 2 GB with the collector.** Each is capped at 900 MB; they should not run at the same time (R2-01).
 - **Expiry can delete a file a build is reading.** The worker's hourly expiry removes files that compaction replaced. A build reads the file list at its start, so it should run well clear of the compaction hour, or under a shared lock (item 10).
+- **One feed per mode is not the whole mode.** The light rail feed is the Inner West line only and the ferry feed is Sydney Ferries only, so L2, L3, L4 and private-ferry trips are `not_judged` (D-038) until their feeds are added.
 - **"Never seen" is not "did not run".** Public wording stays "timetable honesty" (docs/7_data_model.md); most never-seen trips in R2-01 belong to operators without realtime at all.

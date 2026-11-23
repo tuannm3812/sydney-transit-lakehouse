@@ -2,6 +2,9 @@
 -- stop, observed against the timetable's gap between the same two
 -- trips; bunched when the observed gap is under bunching_ratio of the
 -- scheduled one (docs/7_data_model.md).
+-- A loop route calls at some stops twice (often its terminus), so
+-- vehicles are paired per visit: the first call of one trip with the
+-- first call of the next, never with its last.
 with arr as (
     select
         a.service_date,
@@ -12,12 +15,15 @@ with arr as (
         t.direction_id,
         a.stop_id,
         a.stop_sequence,
+        p.visit,
         a.trip_id,
         a.sched_arrival_utc,
         a.observed_arrival_utc
     from {{ ref('fct_stop_arrival') }} a
     join {{ ref('stg_scheduled_trip') }} t
         on t.trip_id = a.trip_id and t.service_date = a.service_date
+    join {{ ref('stg_pattern_stop') }} p
+        on p.pattern_id = t.pattern_id and p.stop_sequence = a.stop_sequence
     where not a.skipped
 ),
 
@@ -29,7 +35,7 @@ paired as (
         lag(sched_arrival_utc) over w as prev_sched_utc
     from arr
     window w as (
-        partition by service_date, route_id, direction_id, stop_id
+        partition by service_date, route_id, direction_id, stop_id, visit
         order by observed_arrival_utc, trip_id
     )
 )
@@ -43,6 +49,7 @@ select
     direction_id,
     stop_id,
     stop_sequence,
+    visit,
     prev_trip_id,
     trip_id,
     observed_arrival_utc,

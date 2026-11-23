@@ -1,7 +1,10 @@
 -- Stretches of time each realtime feed was captured, from
 -- bronze.snapshot: a new stretch starts after a gap longer than
 -- coverage_max_gap_s. Outcomes are judged only inside a stretch, so a
--- missing hour of raw data never reads as missing buses.
+-- missing hour of raw data never reads as missing buses. A snapshot
+-- that could not be read or decoded as a whole is not capture: it
+-- shows no trips, so a run of them would turn every trip into a ghost.
+-- A partial decode keeps its readable entities and still counts.
 with snaps as (
     select
         feed,
@@ -11,6 +14,7 @@ with snaps as (
         lag(fetched_at) over (partition by feed order by fetched_at) as prev_at
     from {{ source('bronze', 'snapshot') }}
     where kind in ('trip_updates', 'vehicle_positions')
+        and (decode_error is null or decode_error like 'partial_decode%')
 ),
 
 flagged as (
