@@ -50,7 +50,7 @@ The automatic reading is one of `pipeline_miss`, `start_date_mismatch`, `alert_e
 | 3 | Hand-check sheet with raw search | built | real hours; the gate run on backfilled history |
 | 4 | Map replay export and viewer | built; viewer checked in a headless browser | real hours |
 | 5 | Evidence dashboard: overview, ghosts, bunching, replay, quality | pages written; CI builds them | real hours |
-| 6 | Run on about 2 days of S3 hours (R3-01, interim) | planned | read-only S3 access for the cloud session (Mike) |
+| 6 | Run on about 2 days of S3 hours (R3-01, interim) | done 2026-11-24: 22 and 23 Nov; three rules fixed (D-047) | Mike's verdicts on the two hand-check sheets |
 | 7 | Live radar: bunches forming now, from the latest trip updates | planned | the worker live on the host |
 | 8 | Hosting the dashboard (static host, free tier) and the portfolio link | planned | Mike's choice of host |
 | 9 | Hand-check of 20 trips on backfilled history (the gate) | planned | the backfill after the worker deploys (D-040) |
