@@ -1,0 +1,28 @@
+{
+  "name": "sydney-transit-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public read-only dashboard over the gold tables (Phase 3, D-045).",
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "sources": "evidence sources",
+    "build": "node scripts/vendor.mjs && evidence build",
+    "build:strict": "node scripts/vendor.mjs && evidence build:strict",
+    "dev": "node scripts/vendor.mjs && evidence dev --open /",
+    "preview": "evidence preview"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@evidence-dev/core-components": "5.4.2",
+    "@evidence-dev/duckdb": "2.0.1",
+    "@evidence-dev/evidence": "40.1.8",
+    "deck.gl": "9.0.38",
+    "maplibre-gl": "4.7.1"
+  },
+  "devDependencies": {
+    "typescript": "5.4.2"
+  }
+}

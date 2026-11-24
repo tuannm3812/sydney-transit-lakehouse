@@ -31,12 +31,18 @@ vars:
   outcome_grace_minutes: 180
   # A trip that got within this many stops of its last stop ran.
   ran_max_stops_left: 2
+  # ... and so did one that left the feed less than this long before
+  # its scheduled end (D-047).
+  partial_min_early_minutes: 10
   # On time: no more than this early or late at a stop.
   on_time_early_s: 60
   on_time_late_s: 300
   # Bunched: observed gap below this share of the scheduled gap
   # (docs/7_data_model.md).
   bunching_ratio: 0.333
+  # A bunch (Phase 3, D-045): the same two consecutive vehicles are
+  # bunched at this many stops or more, so one noisy stop is not one.
+  bunch_min_stops: 3
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 
@@ -49,6 +55,9 @@ models:
       +schema: gold
       +materialized: table
     quality:
+      +schema: gold
+      +materialized: table
+    products:
       +schema: gold
       +materialized: table
 

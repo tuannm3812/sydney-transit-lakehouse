@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map replay</title>
+<!-- Map replay (Phase 3, D-045). Data: `python -m transit_lakehouse.gold
+     replay --out dashboard/static/replay/data`, one JSON per Sydney hour. -->
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/deck.gl.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --ink: #1b2430; --muted: #5a6370; --line: #d8dee3;
+    --panel: rgba(255, 255, 255, 0.94);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --ink: #e8ebee; --muted: #a3abb4;
+      --line: #2c333b; --panel: rgba(17, 20, 24, 0.94); }
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg);
+    color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .panel { position: absolute; left: 12px; right: 12px; bottom: 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  button { cursor: pointer; min-width: 64px; }
+  input[type=range] { flex: 1; min-width: 160px; }
+  .clock { font-variant-numeric: tabular-nums; font-weight: 600;
+    min-width: 64px; }
+  .muted { color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px;
+    height: 10px; border-radius: 50%; margin-right: 4px;
+    background: var(--c); vertical-align: -1px; }
+  #empty { position: absolute; inset: 0; display: none; place-items: center;
+    padding: 16px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="empty"><p>No replay data has been published yet.</p></div>
+<div class="panel">
+  <div class="row">
+    <label>Day <select id="day"></select></label>
+    <label>Hour <select id="hour"></select></label>
+    <button id="play" type="button">Play</button>
+    <label>Speed <select id="speed">
+      <option value="30">30×</option>
+      <option value="60" selected>60×</option>
+      <option value="120">120×</option>
+    </select></label>
+    <span class="clock" id="clock">--:--</span>
+    <span class="muted" id="count"></span>
+  </div>
+  <div class="row">
+    <input id="time" type="range" min="0" max="3599" value="0" step="1"
+      aria-label="Time in the hour">
+  </div>
+  <div class="row legend" id="legend"></div>
+</div>
+<script>
+// TfNSW mode colours, as on the dashboard and the decks.
+const MODES = {
+  bus: [0, 181, 239], train: [246, 137, 31], metro: [22, 131, 136],
+  lightrail: [238, 52, 63], ferry: [90, 176, 49], coach: [116, 34, 130]
+};
+const NAMES = { bus: 'Buses', train: 'Trains', metro: 'Metro',
+  lightrail: 'Light rail', ferry: 'Ferries', coach: 'Coaches' };
+const DATA = 'data/';
+const $ = (id) => document.getElementById(id);
+let index = null, hour = null, tracks = [], bunches = [], t = 0;
+let playing = false, last = null;
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: { base: { type: 'raster', tileSize: 256,
+      tiles: ['a', 'b', 'c', 'd'].map(
+        (s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`),
+      attribution: '© OpenStreetMap contributors © CARTO' } },
+    layers: [{ id: 'base', type: 'raster', source: 'base' }]
+  },
+  center: [151.1, -33.87], zoom: 10.5
+});
+const overlay = new deck.MapboxOverlay({ layers: [] });
+map.addControl(overlay);
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+function sydneyClock(epoch) {
+  return new Date(epoch * 1000).toLocaleTimeString('en-AU', {
+    timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit',
+    hour12: false });
+}
+
+// Position of a track at second s, interpolated between its points.
+function at(track, s) {
+  const p = track.p;
+  if (s < p[0][2] || s > p[p.length - 1][2] + 60) return null;
+  let lo = 0, hi = p.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1;
+    if (p[mid][2] <= s) lo = mid; else hi = mid - 1; }
+  const a = p[lo], b = p[Math.min(lo + 1, p.length - 1)];
+  if (b === a || b[2] === a[2]) return [a[0], a[1]];
+  const f = Math.min(1, (s - a[2]) / (b[2] - a[2]));
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+function bunchedTrips(epoch) {
+  const out = new Set();
+  for (const b of bunches) {
+    if (epoch >= b.first_at - 60 && epoch <= b.last_at + 60) {
+      out.add(b.lead_trip_id); out.add(b.follow_trip_id);
+    }
+  }
+  return out;
+}
+
+function draw() {
+  if (!hour) return;
+  const epoch = hour.t0 + t;
+  const hot = bunchedTrips(epoch);
+  const now = [];
+  for (const tr of tracks) {
+    const pos = at(tr, t);
+    if (pos) now.push({ tr, pos, hot: hot.has(tr.t) });
+  }
+  $('clock').textContent = sydneyClock(epoch);
+  const pairs = hot.size / 2 | 0;
+  $('count').textContent = `${now.length} vehicle${now.length === 1 ? '' : 's'}` +
+    (pairs ? `, ${pairs} bunched pair${pairs === 1 ? '' : 's'}` : '');
+  overlay.setProps({ layers: [
+    new deck.TripsLayer({
+      id: 'trails', data: tracks,
+      getPath: (d) => d.p.map((q) => [q[0], q[1]]),
+      getTimestamps: (d) => d.p.map((q) => q[2]),
+      getColor: (d) => MODES[d.m] || [107, 118, 129],
+      widthMinPixels: 2, opacity: 0.5, trailLength: 180,
+      currentTime: t, fadeTrail: true
+    }),
+    new deck.ScatterplotLayer({
+      id: 'now', data: now, getPosition: (d) => d.pos,
+      getFillColor: (d) => MODES[d.tr.m] || [107, 118, 129],
+      getLineColor: [27, 36, 48], lineWidthMinPixels: 1,
+      stroked: true, getRadius: (d) => (d.hot ? 9 : 4),
+      radiusUnits: 'pixels', pickable: true,
+      updateTriggers: { getRadius: [epoch] }
+    })
+  ], getTooltip: ({ object }) => object && {
+    text: `${NAMES[object.tr.m] || object.tr.m} ${object.tr.r || ''}` +
+      (object.tr.h ? ` to ${object.tr.h}` : '') +
+      (object.hot ? '\nbunched' : '') }
+  });
+}
+
+function tick(ts) {
+  if (playing) {
+    if (last !== null) t += ((ts - last) / 1000) * Number($('speed').value);
+    last = ts;
+    if (t >= 3600) { nextHour(); }
+    $('time').value = Math.min(3599, Math.floor(t));
+    draw();
+  }
+  requestAnimationFrame(tick);
+}
+
+async function loadHour(file) {
+  const res = await fetch(DATA + file);
+  hour = await res.json();
+  tracks = hour.vehicles.filter((v) => v.p.length > 0);
+  t = 0; $('time').value = 0;
+  draw();
+}
+
+function nextHour() {
+  const sel = $('hour');
+  if (sel.selectedIndex < sel.options.length - 1) {
+    sel.selectedIndex += 1; loadHour(sel.value);
+  } else { playing = false; $('play').textContent = 'Play'; t = 3599; }
+}
+
+async function loadDay(day) {
+  const entry = index.days.find((d) => d.day === day);
+  const res = await fetch(`${DATA}${day}/bunches.json`);
+  bunches = res.ok ? await res.json() : [];
+  const sel = $('hour');
+  sel.innerHTML = '';
+  for (const h of entry.hours) {
+    const o = document.createElement('option');
+    o.value = h.file; o.textContent =
+      `${String(h.hour).padStart(2, '0')}:00 (${h.vehicles} vehicles)`;
+    sel.appendChild(o);
+  }
+  const peak = entry.hours.findIndex((h) => h.hour === 8);
+  sel.selectedIndex = peak >= 0 ? peak : 0;
+  await loadHour(sel.value);
+}
+
+async function start() {
+  const legend = $('legend');
+  for (const [m, c] of Object.entries(MODES)) {
+    const s = document.createElement('span');
+    s.style.setProperty('--c', `rgb(${c.join(',')})`);
+    s.textContent = NAMES[m]; legend.appendChild(s);
+  }
+  const res = await fetch(DATA + 'index.json');
+  if (!res.ok) { $('empty').style.display = 'grid'; return; }
+  index = await res.json();
+  if (!index.days.length) { $('empty').style.display = 'grid'; return; }
+  const sel = $('day');
+  for (const d of index.days) {
+    const o = document.createElement('option');
+    o.value = d.day; o.textContent = d.day; sel.appendChild(o);
+  }
+  await loadDay(index.days[0].day);
+}
+
+$('day').addEventListener('change', (e) => loadDay(e.target.value));
+$('hour').addEventListener('change', (e) => loadHour(e.target.value));
+$('time').addEventListener('input', (e) => { t = Number(e.target.value);
+  draw(); });
+$('play').addEventListener('click', () => {
+  playing = !playing; last = null;
+  $('play').textContent = playing ? 'Pause' : 'Play';
+});
+requestAnimationFrame(tick);
+start();
+</script>
+</body>
+</html>

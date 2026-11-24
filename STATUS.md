@@ -56,7 +56,7 @@ Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 
 
 ## Reports
 
-Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run, R2-01 gold marts dry run (interim).
+Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run, R2-01 gold marts dry run (interim), R3-01 ghost trips and bunching on two real days (interim).
 
 ## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
 
@@ -85,3 +85,20 @@ Built on silver tables replayed from real hour tars; nothing is deployed. Gate: 
 - [x] Review of the merged gold models (23 Nov): ghost candidates only for operators with realtime that day (D-038); unreadable snapshots no longer count as capture; loop routes paired per call; route mart keeps regions apart
 - [ ] Excess wait time, incremental nightly builds
 - [ ] **After the worker is live:** a full day of every mode, then the 7-day quality clock (D-039, gate about 9 Dec), the volume test and the public quality page
+
+## Phase 3, started 2026-11-24 on branches (docs/12_phase3.md)
+
+Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); nothing is deployed. Gate: 20 ghost flags hand-checked against the raw positions on backfilled history; at least 18 hold up and none is a pipeline miss (D-046).
+
+- [x] Ghost trip tracker and route honesty marts: missing and vanished trips of operators with realtime (D-045)
+- [x] Bunching radar: bunches (a pair together for 3+ stops) and hot spots by stop and hour (D-045)
+- [x] Hand-check sheet: seeded sample, raw snapshots searched for each trip id (D-045)
+- [x] Map replay: hourly export and a deck.gl viewer
+- [x] Evidence dashboard over a public Parquet extract (D-044, D-045); CI builds it on synthetic data
+- [x] Run on 2 real service days (22 and 23 Nov) from S3 hours: R3-01, `docs/reports/phase3-realdays-20261124.md`. 0.36% of Monday's judged trips missing (161 of 166 at Busways North West), 2,844 bus bunches, no pipeline miss in 40 hand-checked trips; three judging rules fixed (D-047)
+- [ ] **Mike:** verdicts on the two hand-check sheets (`docs/reports/handcheck-20261122.md`, `handcheck-20261123.md`)
+- [ ] Replay expires and compacts as it goes (I-20) and the gold window keeps the day before (I-21), before the S3 backfill
+- [ ] Trains judged from their trip ids; light rail arrivals (O-04)
+- [ ] Live radar from the latest trip updates (after the worker is live)
+- [ ] Dashboard host and portfolio link (Mike's choice)
+- [ ] Hand-check of 20 trips on backfilled history (the gate): pass at 18 of 20 with no pipeline miss (D-046)

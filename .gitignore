@@ -15,6 +15,9 @@ docs/reports/*
 !docs/reports/profile-20261118.md
 !docs/reports/offload-20261118.md
 !docs/reports/marts-dryrun-20261121.md
+!docs/reports/phase3-realdays-20261124.md
+!docs/reports/handcheck-20261122.md
+!docs/reports/handcheck-20261123.md
 
 # Python
 __pycache__/
