@@ -1,5 +1,5 @@
 version: 2
-# Phase 3 products (D-039): the timetable honesty tracker and the
+# Phase 3 products (D-045): the timetable honesty tracker and the
 # bunching radar, read by the dashboard and the hand-check.
 models:
   - name: fct_ghost_trip

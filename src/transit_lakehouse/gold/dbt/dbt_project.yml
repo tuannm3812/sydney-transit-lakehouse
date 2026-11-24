@@ -37,7 +37,7 @@ vars:
   # Bunched: observed gap below this share of the scheduled gap
   # (docs/7_data_model.md).
   bunching_ratio: 0.333
-  # A bunch (Phase 3, D-039): the same two consecutive vehicles are
+  # A bunch (Phase 3, D-045): the same two consecutive vehicles are
   # bunched at this many stops or more, so one noisy stop is not one.
   bunch_min_stops: 3
   # Greater Sydney box for routes whose network spans regions.

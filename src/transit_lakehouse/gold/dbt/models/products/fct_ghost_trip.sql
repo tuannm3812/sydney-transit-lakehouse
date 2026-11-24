@@ -1,4 +1,4 @@
--- The timetable honesty tracker (Phase 3, D-039): one row per judged
+-- The timetable honesty tracker (Phase 3, D-045): one row per judged
 -- trip that never showed up ("missing", outcome never_seen) or that
 -- left the feed well before its last stop ("vanished", outcome
 -- partial), for operators that publish realtime that day (D-038).

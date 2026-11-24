@@ -1,4 +1,4 @@
-"""Phase 3 products (D-039): ghost trips, route honesty, bunching, the
+"""Phase 3 products (D-045): ghost trips, route honesty, bunching, the
 hand-check sheet and the map replay export, on one bus route.
 
 Route R1 (operator A1, with realtime) has four stops ten minutes apart:
@@ -26,7 +26,7 @@ from google.transit import gtfs_realtime_pb2
 
 from transit_lakehouse.collector.config import Feed
 from transit_lakehouse.collector.landing import Lander
-from transit_lakehouse.gold import handcheck, replay
+from transit_lakehouse.gold import handcheck, publish, replay
 from transit_lakehouse.gold.__main__ import build, gold_paths
 from transit_lakehouse.worker.runner import run_once
 from transit_lakehouse.worker.tables import open_catalog
@@ -174,9 +174,8 @@ def vp_snapshot(t: datetime) -> bytes:
     return msg.SerializeToString()
 
 
-@pytest.fixture(scope="module")
-def data_dir(tmp_path_factory) -> Path:
-    data_dir = tmp_path_factory.mktemp("gold_products") / "data"
+def build_products(data_dir: Path) -> Path:
+    """Land the route's snapshots, run the worker and build gold."""
     lander = Lander(data_dir)
     lander.land(
         "static_gtfs",
@@ -194,6 +193,11 @@ def data_dir(tmp_path_factory) -> Path:
     run_once(data_dir, catalog, [TU_FEED, VP_FEED])
     assert build(data_dir, None, {"outcome_grace_minutes": 20}, None) == 0
     return data_dir
+
+
+@pytest.fixture(scope="module")
+def data_dir(tmp_path_factory) -> Path:
+    return build_products(tmp_path_factory.mktemp("gold_products") / "data")
 
 
 @pytest.fixture(scope="module")
@@ -341,6 +345,26 @@ def test_replay_writes_hours_tracks_and_bunches(
     ]
 
 
+def test_publish_writes_only_the_public_tables(
+    db: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "public"
+    with duckdb.connect(str(db)) as con:
+        rows = publish.publish(con, out)
+    assert sorted(p.name for p in out.iterdir()) == sorted(
+        f"{name}.parquet" for name in publish.TABLES
+    )
+    assert rows["ghost_trips"] == 3
+    assert rows["bunching_events"] == 1
+    assert rows["quality"] > 0
+    # Parquet any DuckDB reads, whatever the gold file's storage version
+    [(kinds,)] = duckdb.sql(
+        f"select list(distinct ghost_kind order by ghost_kind)"
+        f" from read_parquet('{out / 'ghost_trips.parquet'}')"
+    ).fetchall()
+    assert kinds == ["missing", "vanished"]
+
+
 def test_replay_hours_follow_daylight_saving() -> None:
     con = duckdb.connect()
     # Sydney leaves daylight saving on 5 Apr 2026 (25 hours) and
@@ -348,3 +372,11 @@ def test_replay_hours_follow_daylight_saving() -> None:
     assert len(replay.hour_bounds(con, date(2026, 4, 5))) == 25
     assert len(replay.hour_bounds(con, date(2026, 10, 4))) == 23
     assert len(replay.hour_bounds(con, DAY)) == 24
+
+
+if __name__ == "__main__":
+    # CI builds the dashboard against this synthetic route, to check the
+    # pages compile; it is never published (dashboard/README.md).
+    import sys
+
+    print(build_products(Path(sys.argv[1])))

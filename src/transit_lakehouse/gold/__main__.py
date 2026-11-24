@@ -6,6 +6,7 @@
     python -m transit_lakehouse.gold views             # views only
     python -m transit_lakehouse.gold dq                # last run's results
     python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
+    python -m transit_lakehouse.gold publish           # dashboard extract
     python -m transit_lakehouse.gold replay --day 2026-11-24 \\
         --out dashboard/static/replay/data
 
@@ -27,7 +28,7 @@ from pathlib import Path
 
 import duckdb
 
-from transit_lakehouse.gold import dq, handcheck, replay
+from transit_lakehouse.gold import dq, handcheck, publish, replay
 from transit_lakehouse.gold.views import refresh_views
 from transit_lakehouse.worker.tables import open_catalog
 
@@ -36,7 +37,9 @@ log = logging.getLogger("transit_lakehouse.gold")
 
 
 def gold_paths(data_dir: Path) -> dict[str, Path]:
-    root = data_dir / "gold"
+    # Absolute, because dbt resolves a relative target path against the
+    # project folder, not the working directory.
+    root = data_dir.resolve() / "gold"
     return {
         "root": root,
         "db": root / "transit.duckdb",
@@ -127,7 +130,7 @@ def last_results(data_dir: Path) -> str:
 
 
 def run_handcheck(args: argparse.Namespace) -> int:
-    """Write the hand-check sheet for one service day (D-039)."""
+    """Write the hand-check sheet for one service day (D-045)."""
     db = gold_paths(args.data_dir)["db"]
     with duckdb.connect(str(db), read_only=True) as con:
         trips = handcheck.sample(con, args.service_date, args.n, args.seed)
@@ -145,8 +148,18 @@ def run_handcheck(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_publish(args: argparse.Namespace) -> int:
+    """Write the dashboard's public Parquet extract (D-045)."""
+    db = gold_paths(args.data_dir)["db"]
+    out = args.out or gold_paths(args.data_dir)["root"] / "public"
+    with duckdb.connect(str(db), read_only=True) as con:
+        for name, n in publish.publish(con, out).items():
+            print(f"{name}: {n} rows")
+    return 0
+
+
 def run_replay(args: argparse.Namespace) -> int:
-    """Export map replay files for each Sydney day asked (D-039)."""
+    """Export map replay files for each Sydney day asked (D-045)."""
     db = gold_paths(args.data_dir)["db"]
     args.out.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(db), read_only=True) as con:
@@ -187,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("-n", type=int, default=20)
     h.add_argument("--seed", default="phase3")
     h.add_argument("--out", type=Path)
+    pub = sub.add_parser("publish", help="the dashboard's public extract")
+    pub.add_argument("--out", type=Path, help="default DATA_DIR/gold/public")
     r = sub.add_parser("replay", help="map replay files for the dashboard")
     r.add_argument(
         "--day",
@@ -212,6 +227,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "handcheck":
         return run_handcheck(args)
+    if args.cmd == "publish":
+        return run_publish(args)
     if args.cmd == "replay":
         return run_replay(args)
     return build(args.data_dir, args.since, json.loads(args.vars), args.select)

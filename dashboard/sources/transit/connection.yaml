@@ -1,0 +1,8 @@
+# The dashboard reads only the public Parquet extract that
+# `python -m transit_lakehouse.gold publish` writes to
+# data/gold/public/ (D-045); the paths in the queries are relative to
+# the dashboard folder.
+name: transit
+type: duckdb
+options:
+  filename: ":memory:"

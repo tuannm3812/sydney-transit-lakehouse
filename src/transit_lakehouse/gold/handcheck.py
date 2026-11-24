@@ -1,4 +1,4 @@
-"""Hand-check sheet for ghost trips (the Phase 3 gate, D-039).
+"""Hand-check sheet for ghost trips (the Phase 3 gate, D-045).
 
 The gate is that flagged trips hold up when checked by hand against the
 raw positions. This module picks a sample of ``gold.fct_ghost_trip``

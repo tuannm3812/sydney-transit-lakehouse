@@ -34,3 +34,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t transit-collector .
+
+  # The dashboard compiles against the synthetic route of
+  # tests/test_gold_products.py. This build is never published
+  # (dashboard/README.md, D-045).
+  dashboard-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: pip install -e ".[dev]"
+      - name: Synthetic gold, public extract and replay files
+        run: |
+          python -m tests.test_gold_products data
+          python -m transit_lakehouse.gold --data-dir data publish
+          python -m transit_lakehouse.gold --data-dir data replay \
+            --day 2026-11-18 --out dashboard/static/replay/data
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run sources
+          npm run build:strict

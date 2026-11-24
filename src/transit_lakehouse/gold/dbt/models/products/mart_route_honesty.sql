@@ -1,5 +1,5 @@
 -- Route x service day: how much of the timetable showed up live
--- (Phase 3, D-039). Only trips the feeds could judge count (captured
+-- (Phase 3, D-045). Only trips the feeds could judge count (captured
 -- from before the start to the grace after the end, for an operator
 -- with realtime that day, D-038), so a capture gap or an operator
 -- without realtime never lowers a route's score.
