@@ -17,7 +17,7 @@ Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-o
 | 5 | **Static timetable versions** (`silver.timetable_*`, D-029): one version per landed zip, stop times stored once per distinct trip pattern | built 19 Nov, synthetic tests; real zip to measure | a static zip from S3 for a real run |
 | 6 | **Service Alerts** (`silver.alert`, `silver.alert_scope`, type-2 history by content hash; TfNSW's field 7 repaired, D-030) | done: real 17 Nov 20:00 to 22:00 UTC replayed, 314 alerts, replay identical, 159 MB | |
 | 7 | **Compaction** of small files by closed hour (D-032), and per-trip delay encoding to shrink bus `stop_prediction` (D-028) | done | |
-| 8 | **Deploy the worker** on the collector host (`docker compose --profile worker up -d worker`) | ready after item 2 | **the Phase 0 gate (24–25 Nov)** and Mike's SSH approval |
+| 8 | **Deploy the worker** on the collector host (`docker compose --profile worker up -d worker`) | ready after item 2 | **the Phase 0 gate (about 28 Nov, D-033)**; pre-approved runbook (D-043), SSH approval names the commit |
 | 9 | **Iceberg warehouse on S3** (prefix `lakehouse/` in the raw bucket; the role needs delete on that prefix only, for expiry and compaction) | proposed | Mike approves the IAM change |
 | 10 | **Redpanda + Spark benchmark**: compose profile that replays raw into Redpanda and runs Spark into a separate `bench` namespace; compare latency, cost and ops load with the worker | planned | Mike approves an on-demand 8–16 GB instance for the run hours |
 | 11 | **Re-decide the long-term host** before the AWS credits end (D-015) | open | Mike |

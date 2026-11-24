@@ -1,10 +1,19 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-24 (day 6 passes under D-037).*
+*Rewritten in place. Last updated 2026-11-24 (revised plan approved, D-039 to D-044).*
 
 **Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
 **Gate:** 7 consecutive days at ≥ 99% capture on every enabled feed (`checks capture --window 7d --gate` exits 0), and the real API quota confirmed by the 24-hour report (done, D-024). **The clock restarted after TfNSW's outage on 20 Nov (D-033). Short TfNSW outages that the collector fully recorded are allowed up to 30 min a day and 2 a week (D-037). Earliest pass: about 2026-11-27 16:00 UTC (28 Nov, 3 am Sydney) for all 12 feeds.**
+
+## Revised plan (Mike, 2026-11-24, D-039 to D-044)
+
+Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 0 gate about 28 Nov, Phase 1 gate about 2 Dec, Phase 2 gate about 9 Dec, Phase 3 gate about 13 Dec, launch about 20 Dec (was about 10 Jan 2027).
+
+- Gate day (pre-approved runbook, D-043): gate check and R0-02, worker deploy, overnight S3 backfill (D-040). The SSH approval names the commit.
+- Phase 2's 7-day quality clock starts when the worker goes live (D-039).
+- Spark benchmark: one on-demand day around 3 Dec, outside the Phase 1 gate (D-041).
+- Phase 3 starts now in the cloud on replayed S3 hours (D-042); dashboard with Evidence (D-044).
 
 ## Phase 0 checklist
 
@@ -42,6 +51,7 @@
 
 ## Blocked on Mike
 
+- **About 2 days of S3 raw hours for Phase 3** (D-042), as for the Phase 1 dry run.
 - Nothing for Phase 0. First daily prune ran 2026-11-22 01:40 UTC: 377 local raw hours deleted after re-checking each in S3, 8.06 GB freed, 0 failed; 58 GB free after (server `docs/reports/offload.log`). Live alerts (D-034) on since 2026-11-22.
 
 ## Reports
@@ -59,8 +69,8 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
 - [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: its 273 files merged into 4, so the bus tables went from 282 files to 13 (the 3 am hour's few files stay as they are), rows unchanged, 426 MB peak
 - [x] Memory on Linux (Docker, 900 MB cap): realtime about 530 MB, timetable about 737 MB, no OOM
-- [ ] **After the Phase 0 gate:** deploy the worker (Mike's approval)
-- [ ] Redpanda + Spark benchmark (needs an on-demand instance, Mike's approval)
+- [ ] **Gate day, about 28 Nov:** deploy the worker, then the overnight S3 backfill (D-043, D-040)
+- [ ] Redpanda + Spark benchmark: one on-demand day around 3 Dec, outside the Phase 1 gate (D-041; Mike starts and stops the instance)
 - [ ] Re-decide the long-term host before the AWS credits run out (D-015)
 
 ## Phase 2, started 2026-11-21 on branches (docs/11_phase2.md)
@@ -74,4 +84,4 @@ Built on silver tables replayed from real hour tars; nothing is deployed. Gate: 
 - [x] Record when a trip leaves the feed in silver (Mike, 22 Nov, D-036): 4,716 last-stop arrivals on the real hours
 - [x] Review of the merged gold models (23 Nov): ghost candidates only for operators with realtime that day (D-038); unreadable snapshots no longer count as capture; loop routes paired per call; route mart keeps regions apart
 - [ ] Excess wait time, incremental nightly builds
-- [ ] **After the worker is live:** a full day of every mode, then the volume test and the public quality page
+- [ ] **After the worker is live:** a full day of every mode, then the 7-day quality clock (D-039, gate about 9 Dec), the volume test and the public quality page
