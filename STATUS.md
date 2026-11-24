@@ -1,6 +1,6 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-23 (day 5, TfNSW outage I-18).*
+*Rewritten in place. Last updated 2026-11-24 (day 6 passes under D-037).*
 
 **Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
@@ -38,10 +38,10 @@
 | 3 | 2026-11-20 | **93.82% (bus TU): FAIL on 10 feeds** | not recorded | Server cron `capture-20261121.json`, 20 Nov 00:05 – 21 Nov 00:05 UTC. **TfNSW outage:** 14:26 – about 15:02 UTC the gateway answered almost every realtime request with 502 "Error collecting requested resource" (662 × 502, 18 network errors), with intermittent 502s until 15:58; longest gaps 1,499 – 2,648 s. Service alerts (99.93%) and the timetable passed. The collector kept polling and recorded every attempt. Also three lone 401s at 10:46 – 10:48 UTC, each a 300 s gap (before the D-031 fix went live). **Mike: strict gate, the 7-day clock restarts (D-033).** |
 | 4 | 2026-11-21 | 99.98% (light rail VP); all 12 feeds pass | not recorded | Server cron 21 Nov 00:05 – 22 Nov 00:05 UTC, exit 0. One warning: light rail trip updates unchanged for 27 min overnight (stuck warning, not a failure). Redeployed to 9a8185f at 11:38 UTC (D-031 live). First clean day of the restarted gate (D-033). |
 | 5 | 2026-11-22 | 100.00% (all 12 feeds) | not recorded | Server cron 22 Nov 00:05 – 23 Nov 00:05 UTC; longest gap 33 s. Second clean day of the restarted gate (D-033). Prune 23 Nov: 266 hours (4.70 GB) removed, 0 failed; uploads 0 failed; 59 GB free. Next day (23 Nov) holds TfNSW outage I-18, within the D-037 allowance. |
+| 6 | 2026-11-23 | 99.31% (bus TU); all 12 feeds pass | not recorded | Server cron 23 Nov 00:05 – 24 Nov 00:05 UTC on a869ede (D-037 logic, deployed 23 Nov without a collector restart). TfNSW slowdown I-18 (02:35 – 02:52 UTC, gaps 164 – 285 s) tagged "within D-037 allowance" on 10 realtime feeds. Third clean day of the restarted gate. Uploads 0 failed; 53 GB free before the 01:40 prune. |
 
 ## Blocked on Mike
 
-- **Deploy the D-037 gate check before gate day** (SSH approval naming the commit), so the 7-day run applies the allowance.
 - Nothing for Phase 0. First daily prune ran 2026-11-22 01:40 UTC: 377 local raw hours deleted after re-checking each in S3, 8.06 GB freed, 0 failed; 58 GB free after (server `docs/reports/offload.log`). Live alerts (D-034) on since 2026-11-22.
 
 ## Reports
