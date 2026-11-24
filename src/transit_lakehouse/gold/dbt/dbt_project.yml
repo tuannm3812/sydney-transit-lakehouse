@@ -31,6 +31,9 @@ vars:
   outcome_grace_minutes: 180
   # A trip that got within this many stops of its last stop ran.
   ran_max_stops_left: 2
+  # ... and so did one that left the feed less than this long before
+  # its scheduled end (D-047).
+  partial_min_early_minutes: 10
   # On time: no more than this early or late at a stop.
   on_time_early_s: 60
   on_time_late_s: 300

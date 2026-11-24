@@ -35,7 +35,7 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 `gold handcheck` draws a seeded sample of `fct_ghost_trip` for one service day, spread over kind (missing first), confidence and mode, so nobody picks the trips. For each one it collects:
 
 1. **Raw**: every landed trip-update and vehicle-position file of the trip's mode from 30 minutes before its start to 30 minutes after its end, decompressed and searched for the trip id as bytes. This does not use the worker's decoder, so it catches a trip the pipeline lost.
-2. **Silver, any date**: rows with the trip id under any `start_date`, which catches a start-date mismatch.
+2. **Silver, any date**: rows with the trip id under any `start_date` inside the trip's window, which catches a start-date mismatch. Bus trip ids repeat every day a trip runs, so rows of another day's run do not count (R3-01).
 3. **Untracked vehicles** (missing trips): vehicles with no trip within 300 m of the first stop within 10 minutes of the start.
 4. **Alerts** naming the trip or its route, and the number of other trips of the route seen that day.
 

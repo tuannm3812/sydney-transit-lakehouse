@@ -10,7 +10,8 @@ checks it against:
   as bytes. This does not use the worker's decoding, so it catches a
   trip the pipeline lost on the way to silver.
 - **silver, any date**: trip-update and position rows with the trip
-  id on any ``start_date``, which catches a start-date mismatch.
+  id on any ``start_date`` inside the trip's window, which catches a
+  start-date mismatch (ids repeat daily, so other days do not count).
 - **untracked vehicles** (missing trips): positions without a trip id
   within ``near_m`` of the trip's first stop around its scheduled
   start, a bus that may have run without its trip logged on.
@@ -151,7 +152,7 @@ def gather(
         lo = ev.sched_start_utc - timedelta(minutes=pad_minutes)
         hi = ev.sched_end_utc + timedelta(minutes=pad_minutes)
         _raw(con, data_dir, ev, lo, hi)
-        _silver(con, ev)
+        _silver(con, ev, lo, hi)
         if ev.ghost_kind == "missing":
             _untracked(con, ev, near_m)
         _alerts(con, ev, lo, hi)
@@ -183,17 +184,22 @@ def _raw(con, data_dir: Path, ev: Evidence, lo, hi) -> None:
                 ev.raw_after_vanish += 1
 
 
-def _silver(con, ev: Evidence) -> None:
+def _silver(con, ev: Evidence, lo, hi) -> None:
+    # Bus trip ids repeat every day the trip runs, so the same id under
+    # another start date is only a mismatch inside this trip's window
+    # (R3-01): rows of yesterday's or tomorrow's run are not.
     [(rows, dates)] = con.execute(
         "select count(*), list(distinct start_date)"
-        " from silver.trip_status where trip_id = ?",
-        [ev.trip_id],
+        " from silver.trip_status where trip_id = ?"
+        " and fetched_at between ? and ?",
+        [ev.trip_id, lo, hi],
     ).fetchall()
     ev.silver_trip_rows = rows
     [(pos, pdates)] = con.execute(
         "select count(*), list(distinct start_date)"
-        " from silver.vehicle_position where trip_id = ?",
-        [ev.trip_id],
+        " from silver.vehicle_position where trip_id = ?"
+        " and fetched_at between ? and ?",
+        [ev.trip_id, lo, hi],
     ).fetchall()
     ev.silver_position_rows = pos
     seen = {d for d in (dates or []) + (pdates or []) if d}

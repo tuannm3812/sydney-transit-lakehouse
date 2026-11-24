@@ -3,6 +3,16 @@
 -- (the "ghost" candidate) or not_judged, with a confidence level.
 -- REMOVED rows (D-036) only set left_feed_at: a trip that left the
 -- feed with more than ran_max_stops_left stops to go is partial.
+-- Stops to go is the smaller of the fewest stops a trip update listed
+-- and the stops whose latest predicted time was still ahead when the
+-- trip left the feed (or, if it never left, when a stop of it last
+-- changed). Bus feeds drop each stop once passed, so the first count
+-- shrinks; the metro, light rail and ferry feeds keep passed stops
+-- listed to the end, so only the second one does (D-047).
+-- A trip that left the feed less than partial_min_early_minutes before
+-- its scheduled end also ran: on 22 and 23 Nov 2026 most trips that
+-- left with stops to go left within minutes of their scheduled end,
+-- which is the feed retiring them on schedule, not a trip cut short.
 --
 -- A trip is judged only when its trip-update feed was captured from
 -- outcome_lead_minutes before its scheduled start to
@@ -42,6 +52,39 @@ rt as (
             as last_status,
         count(*) filter (trip_status <> 'REMOVED') as states
     from {{ ref('stg_rt_trip_state') }}
+    group by all
+),
+
+last_prediction as (
+    select
+        trip_id,
+        start_date,
+        stop_sequence,
+        arg_max(coalesce(arrival_time, departure_time), fetched_at)
+            as predicted_at,
+        max(fetched_at) as changed_at
+    from {{ source('silver', 'stop_prediction') }}
+    where trip_id is not null
+    group by all
+),
+
+stops_ahead as (
+    select
+        rt.trip_id,
+        rt.start_date,
+        count(*) filter (where p.predicted_at > ref.left_at) as stops_ahead
+    from rt
+    join last_prediction p
+        on p.trip_id = rt.trip_id and p.start_date = rt.start_date
+    join (
+        select
+            p.trip_id,
+            p.start_date,
+            coalesce(any_value(r.left_feed_at), max(p.changed_at)) as left_at
+        from last_prediction p
+        join rt r on r.trip_id = p.trip_id and r.start_date = p.start_date
+        group by all
+    ) ref on ref.trip_id = rt.trip_id and ref.start_date = rt.start_date
     group by all
 ),
 
@@ -88,7 +131,7 @@ base as (
         rt.first_seen_at,
         rt.last_state_at,
         rt.left_feed_at,
-        rt.min_stops_left,
+        least(rt.min_stops_left, sa.stops_ahead) as min_stops_left,
         rt.last_status,
         vp.first_position_at,
         vp.last_position_at,
@@ -97,6 +140,8 @@ base as (
         vp.trip_id is not null as seen_vp
     from judged j
     left join rt on rt.trip_id = j.trip_id and rt.start_date = j.start_date
+    left join stops_ahead sa
+        on sa.trip_id = j.trip_id and sa.start_date = j.start_date
     left join vp on vp.trip_id = j.trip_id and vp.start_date = j.start_date
 ),
 
@@ -120,6 +165,9 @@ outcome as (
         case
             when b.last_status = 'CANCELED' then 'cancelled'
             when b.min_stops_left <= {{ var('ran_max_stops_left') }} then 'ran'
+            when b.left_feed_at >= b.sched_end_utc
+                - to_minutes({{ var('partial_min_early_minutes') }})
+                then 'ran'
             when (b.seen_tu or b.seen_vp) and b.tu_covered then 'partial'
             when not (b.seen_tu or b.seen_vp) and b.tu_covered
                 and os.mode is not null then 'never_seen'
