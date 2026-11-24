@@ -5,6 +5,9 @@
         --vars '{"outcome_grace_minutes": 20}'
     python -m transit_lakehouse.gold views             # views only
     python -m transit_lakehouse.gold dq                # last run's results
+    python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
+    python -m transit_lakehouse.gold replay --day 2026-11-24 \\
+        --out dashboard/static/replay/data
 
 Reads the lakehouse under ``DATA_DIR`` (as the worker writes it) and
 writes ``DATA_DIR/gold/transit.duckdb``. dbt's target and logs go under
@@ -24,7 +27,7 @@ from pathlib import Path
 
 import duckdb
 
-from transit_lakehouse.gold import dq
+from transit_lakehouse.gold import dq, handcheck, replay
 from transit_lakehouse.gold.views import refresh_views
 from transit_lakehouse.worker.tables import open_catalog
 
@@ -123,6 +126,42 @@ def last_results(data_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def run_handcheck(args: argparse.Namespace) -> int:
+    """Write the hand-check sheet for one service day (D-039)."""
+    db = gold_paths(args.data_dir)["db"]
+    with duckdb.connect(str(db), read_only=True) as con:
+        trips = handcheck.sample(con, args.service_date, args.n, args.seed)
+        evidence = handcheck.gather(con, args.data_dir, trips)
+    if not evidence:
+        log.warning("no ghost trips on %s", args.service_date)
+        return 1
+    out = args.out or (
+        args.data_dir / "gold" / f"handcheck-{args.service_date}.md"
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(handcheck.to_markdown(evidence, args.service_date))
+    out.with_suffix(".json").write_text(handcheck.to_json(evidence))
+    print(f"{len(evidence)} trips -> {out}")
+    return 0
+
+
+def run_replay(args: argparse.Namespace) -> int:
+    """Export map replay files for each Sydney day asked (D-039)."""
+    db = gold_paths(args.data_dir)["db"]
+    args.out.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(db), read_only=True) as con:
+        for day in args.day:
+            entry = replay.export_day(
+                con, day, args.out, args.step, args.mode or None
+            )
+            replay.write_index(args.out, entry)
+            print(
+                f"{day}: {len(entry['hours'])} hours,"
+                f" {entry['bunches']} bunches -> {args.out}"
+            )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="transit_lakehouse.gold")
     parser.add_argument(
@@ -143,6 +182,22 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--vars", default="{}", help="dbt vars, as JSON")
     b.add_argument("--select", nargs="+", help="dbt node selection")
     sub.add_parser("dq", help="results of the last build")
+    h = sub.add_parser("handcheck", help="ghost trip hand-check sheet")
+    h.add_argument("--service-date", type=date.fromisoformat, required=True)
+    h.add_argument("-n", type=int, default=20)
+    h.add_argument("--seed", default="phase3")
+    h.add_argument("--out", type=Path)
+    r = sub.add_parser("replay", help="map replay files for the dashboard")
+    r.add_argument(
+        "--day",
+        type=date.fromisoformat,
+        nargs="+",
+        required=True,
+        help="Sydney local dates",
+    )
+    r.add_argument("--out", type=Path, required=True)
+    r.add_argument("--step", type=int, default=30, help="seconds")
+    r.add_argument("--mode", action="append", help="repeat; default all")
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -155,6 +210,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "dq":
         print(last_results(args.data_dir))
         return 0
+    if args.cmd == "handcheck":
+        return run_handcheck(args)
+    if args.cmd == "replay":
+        return run_replay(args)
     return build(args.data_dir, args.since, json.loads(args.vars), args.select)
 
 

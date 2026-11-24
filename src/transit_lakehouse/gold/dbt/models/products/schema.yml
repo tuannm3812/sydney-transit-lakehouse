@@ -1,0 +1,43 @@
+version: 2
+# Phase 3 products (D-039): the timetable honesty tracker and the
+# bunching radar, read by the dashboard and the hand-check.
+models:
+  - name: fct_ghost_trip
+    description: >
+      Judged trips of operators with realtime that never appeared
+      (missing) or left the feed before their last stops (vanished).
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, trip_id]
+    columns:
+      - name: ghost_kind
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [missing, vanished]
+  - name: mart_route_honesty
+    description: Route x service day share of judged trips that ran.
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, mode, region, route_id]
+  - name: mart_bunching_hotspot
+    description: >
+      Route x direction x stop x day type x local hour bunched share of
+      gaps, with the stop's name and position.
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [mode, region, route_id, direction_id, stop_id,
+              day_type, local_hour]
+  - name: fct_bunching_event
+    description: >
+      Pairs of consecutive vehicles bunched at bunch_min_stops stops or
+      more on one service day.
+    tests:
+      - unique_combination:
+          arguments:
+            columns: [service_date, route_id, direction_id,
+              lead_trip_id, follow_trip_id]
