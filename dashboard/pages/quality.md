@@ -27,7 +27,7 @@ from transit.trip_match
 order by service_date desc, mode
 ```
 
-<DataTable data={match} rows=20>
+<DataTable data={match} emptySet=pass emptyMessage="No rows for this selection yet" rows=20>
   <Column id=service_date />
   <Column id=mode />
   <Column id=realtime_trips fmt=num0 />
@@ -43,4 +43,4 @@ from transit.quality
 order by status <> 'pass' desc, kind, node
 ```
 
-<DataTable data={checks} rows=50 search=true />
+<DataTable data={checks} emptySet=pass emptyMessage="No rows for this selection yet" rows=50 search=true />

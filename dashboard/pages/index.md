@@ -56,6 +56,8 @@ order by service_date
 ```
 
 <LineChart
+  emptySet=pass
+  emptyMessage="No data for this selection yet"
   data={by_mode_day}
   x=service_date
   y=ghost_share

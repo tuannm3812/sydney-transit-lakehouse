@@ -36,6 +36,8 @@ having sum(headways) >= 5
 ```
 
 <BubbleMap
+  emptySet=pass
+  emptyMessage="No data for this selection yet"
   data={spots}
   lat=stop_lat
   long=stop_lon
@@ -72,6 +74,8 @@ order by local_hour
 ```
 
 <LineChart
+  emptySet=pass
+  emptyMessage="No data for this selection yet"
   data={by_hour}
   x=local_hour
   y=bunched_share
@@ -98,7 +102,7 @@ order by bunches desc
 limit 50
 ```
 
-<DataTable data={routes} rows=15 search=true>
+<DataTable data={routes} emptySet=pass emptyMessage="No rows for this selection yet" rows=15 search=true>
   <Column id=mode />
   <Column id=route />
   <Column id=bunches fmt=num0 />
@@ -126,4 +130,4 @@ where day_type like '${inputs.day_type.value}'
 order by service_date desc, from_time
 ```
 
-<DataTable data={events} rows=25 search=true />
+<DataTable data={events} emptySet=pass emptyMessage="No rows for this selection yet" rows=25 search=true />

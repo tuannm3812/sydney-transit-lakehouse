@@ -42,6 +42,8 @@ order by local_hour
 ```
 
 <BarChart
+  emptySet=pass
+  emptyMessage="No data for this selection yet"
   data={by_hour}
   x=local_hour
   y=ghost_trips
@@ -71,7 +73,7 @@ order by sum(trips_missing + trips_vanished) desc
 limit 50
 ```
 
-<DataTable data={routes} rows=15 search=true>
+<DataTable data={routes} emptySet=pass emptyMessage="No rows for this selection yet" rows=15 search=true>
   <Column id=mode />
   <Column id=route />
   <Column id=operator />
@@ -98,7 +100,7 @@ group by all
 order by trips_checked desc
 ```
 
-<DataTable data={operators} rows=20>
+<DataTable data={operators} emptySet=pass emptyMessage="No rows for this selection yet" rows=20>
   <Column id=mode />
   <Column id=operator />
   <Column id=trips_checked fmt=num0 />
@@ -130,4 +132,4 @@ where mode like '${inputs.mode.value}'
 order by service_date desc, due
 ```
 
-<DataTable data={trips} rows=25 search=true />
+<DataTable data={trips} emptySet=pass emptyMessage="No rows for this selection yet" rows=25 search=true />
