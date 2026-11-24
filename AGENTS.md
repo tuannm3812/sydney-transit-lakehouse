@@ -22,6 +22,10 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 - `docs/reports/`: generated capture and quota reports, and phase reports (`R<phase>-<nn>`). Any claim about capture rate, quota or volume traces to one of these. Phase reports follow [docs/reports/README.md](docs/reports/README.md) and render to PDF with `python -m transit_lakehouse.reports`.
 - `data/manifest/`: every poll attempt (gitignored, lives on the collector host).
 
+## External review
+
+Reviews by a second agent use Google Antigravity with Gemini 4 Hydrogen, replacing Codex (Mike, 2026-11-25). Run `scripts/agents/antigravity_review.sh <base>..<head>`: it runs `agy` read-only (plan mode, sandbox) with `scripts/agents/antigravity_review_prompt.md` and writes `docs/reviews/<date>-antigravity-review.md`. Record what happened to each finding at the top of that file, as in the 18 Nov Codex review.
+
 ## Open risks
 
 - The source plan was received and reconciled on 2026-11-17 (D-019).
