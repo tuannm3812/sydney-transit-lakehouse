@@ -1,10 +1,10 @@
 # 12. Phase 3 plan: the headline products
 
-*2026-11-24. Decisions: D-042 (start now, on replayed S3 hours), D-044 (Evidence), D-045 (product design).*
+*2026-11-24. Decisions: D-042 (start now, on replayed S3 hours), D-044 (Evidence), D-045 (product design), D-046 (gate pass mark).*
 
 Phase 3 turns the gold marts into the two headline products of the brief (D-003), a map replay and a public dashboard. It is built in the cloud on raw hours replayed from S3 while the Phase 0 gate runs (D-042), on the same code path the live worker uses. Nothing here touches the collector host.
 
-**Gate (from the plan):** 20 flagged ghost trips hand-checked against the raw positions, on backfilled history. Proposed bar, for Mike to confirm: at least 18 of the 20 flags hold up, and none is a `pipeline_miss`.
+**Gate (from the plan, bar by D-046):** 20 flagged ghost trips hand-checked against the raw positions, on backfilled history. It passes when at least 18 of the 20 flags hold up and none is a `pipeline_miss`.
 
 ## How it runs
 

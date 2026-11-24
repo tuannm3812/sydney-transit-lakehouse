@@ -78,7 +78,7 @@ Built on silver tables replayed from real hour tars; nothing is deployed. Gate: 
 
 ## Phase 3, started 2026-11-24 on branches (docs/12_phase3.md)
 
-Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); nothing is deployed. Gate: 20 ghost flags hand-checked against the raw positions on backfilled history.
+Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); nothing is deployed. Gate: 20 ghost flags hand-checked against the raw positions on backfilled history; at least 18 hold up and none is a pipeline miss (D-046).
 
 - [x] Ghost trip tracker and route honesty marts: missing and vanished trips of operators with realtime (D-045)
 - [x] Bunching radar: bunches (a pair together for 3+ stops) and hot spots by stop and hour (D-045)
@@ -88,4 +88,4 @@ Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); not
 - [ ] **Mike:** read-only S3 access for the cloud session, then a run on about 2 days of real hours (R3-01)
 - [ ] Live radar from the latest trip updates (after the worker is live)
 - [ ] Dashboard host and portfolio link (Mike's choice)
-- [ ] Hand-check of 20 trips on backfilled history (the gate)
+- [ ] Hand-check of 20 trips on backfilled history (the gate): pass at 18 of 20 with no pipeline miss (D-046)
