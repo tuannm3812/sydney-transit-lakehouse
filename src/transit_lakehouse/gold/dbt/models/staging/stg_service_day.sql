@@ -38,10 +38,21 @@ rt_trips as (
     where start_date is not null and trip_id is not null
 ),
 
+-- Only the latest version fetched before the day and those fetched
+-- during it compete, so the scoring join stays a few versions a day
+-- however long the archive grows (TfNSW publishes about 3 a day).
 candidates as (
     select w.service_date, w.day_origin_utc, v.version, v.fetched_at
     from windowed w
-    join versions v on v.fetched_at < w.day_origin_utc + interval 24 hour
+    join versions v
+        on v.fetched_at < w.day_origin_utc + interval 24 hour
+        and v.fetched_at >= coalesce(
+            (
+                select max(b.fetched_at) from versions b
+                where b.fetched_at <= w.day_origin_utc
+            ),
+            w.day_origin_utc
+        )
 ),
 
 scored as (
