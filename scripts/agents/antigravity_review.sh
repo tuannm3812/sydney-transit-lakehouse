@@ -2,6 +2,7 @@
 # External review by Google Antigravity (agy CLI) with Gemini 4 Hydrogen. Replaces the
 # ad hoc Codex review used on 2026-11-18 (Mike, 2026-11-25).
 # Usage: scripts/agents/antigravity_review.sh <git range> [model]
+# PREVIOUS_REVIEW names the review to follow up (default: the last by name in docs/reviews).
 #   e.g. scripts/agents/antigravity_review.sh 8cbaeb4..origin/main
 # Runs in plan mode inside the sandbox, so the agent cannot edit the repo. The review text
 # is written to docs/reviews/<date>-antigravity-review.md; the raw transcript goes to a
@@ -20,10 +21,16 @@ if [[ "$RANGE" == *..* ]]; then
     || { echo "antigravity_review: bad range end: $RANGE" >&2; exit 2; }
 fi
 TEMPLATE="$(cat scripts/agents/antigravity_review_prompt.md)"
+PREVIOUS="${PREVIOUS_REVIEW:-$(ls docs/reviews/*.md | sort | tail -1)}"
 PROMPT="${TEMPLATE//\{RANGE\}/$RANGE}"
-[[ "$PROMPT" == *"$RANGE"* && "$PROMPT" != *"{RANGE}"* ]] \
+PROMPT="${PROMPT//\{PREVIOUS\}/$PREVIOUS}"
+[[ "$PROMPT" == *"$RANGE"* && "$PROMPT" != *"{RANGE}"* && "$PROMPT" != *"{PREVIOUS}"* ]] \
   || { echo "antigravity_review: could not build the prompt" >&2; exit 2; }
 OUT="docs/reviews/$(date +%Y-%m-%d)-antigravity-review.md"
+n=2
+while [ -e "$OUT" ]; do
+  OUT="docs/reviews/$(date +%Y-%m-%d)-antigravity-review-$n.md"; n=$((n + 1))
+done
 RAW="${TMPDIR:-/tmp}/antigravity-review-$(date +%Y%m%dT%H%M%S).log"
 status=0
 "$AGY" --print "$PROMPT" --model "$MODEL" --mode plan --sandbox \
@@ -36,7 +43,7 @@ if [ "$status" -eq 0 ]; then
     echo "($(git rev-parse --short "${RANGE##*..}"))."
     echo
     # agy links files by absolute local path; make them repo-relative.
-    sed "s#file://$R/#../../#g" "$RAW"
+    sed -e "s#file://$R/#../../#g" -e "s#file://${R// /%20}/#../../#g" "$RAW"
   } > "$OUT"
 fi
 echo "agy model=$MODEL exit=$status review=$OUT raw=$RAW"

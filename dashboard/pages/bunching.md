@@ -29,7 +29,7 @@ select
     sum(headways) as gaps,
     sum(bunched) as bunched_gaps,
     sum(bunched) / sum(headways) as bunched_share
-from transit.bunching_by_hour
+from transit.bunching_hotspots
 where day_type like '${inputs.day_type.value}'
 group by all
 having sum(headways) >= 5
