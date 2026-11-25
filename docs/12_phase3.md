@@ -24,8 +24,8 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 |---|---|---|---|
 | Ghost trip tracker | `fct_ghost_trip` | judged trip that was never seen (`missing`) or left the feed early (`vanished`) | operators with realtime that day only (D-038); confidence from `fct_trip_outcome` |
 | Route honesty | `mart_route_honesty` | route x service day | ran, missing and vanished shares of judged trips |
-| Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045) |
-| Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable |
+| Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045); overtakes count, pair in timetable order (D-051) |
+| Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable; the map shows stop-hours with 3 or more gaps, the by-hour chart every gap (`bunching_by_hour`, D-051) |
 | Hand-check sheet | `gold handcheck` | sampled ghost trip | raw snapshots searched for the trip id; evidence and an automatic reading; a person writes the verdict |
 | Map replay | `gold replay`, `dashboard/static/replay/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
 | Dashboard | `gold publish`, `dashboard/` | page | Evidence, static, read-only; reads only the public Parquet extract |
@@ -39,7 +39,7 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 3. **Untracked vehicles** (missing trips): vehicles with no trip within 300 m of the first stop within 10 minutes of the start.
 4. **Alerts** naming the trip or its route, and the number of other trips of the route seen that day.
 
-The automatic reading is one of `pipeline_miss`, `start_date_mismatch`, `alert_explains`, `untracked_vehicle`, `consistent_ghost`, `consistent_vanish` or `no_raw`. The person checking confirms or overrules each row in the sheet's verdict column, and the Phase 3 report quotes the agreement.
+The automatic reading is one of `pipeline_miss`, `raw_incomplete`, `start_date_mismatch`, `alert_explains`, `untracked_vehicle`, `consistent_ghost`, `consistent_vanish` or `no_raw`. `raw_incomplete` means some raw files of the window are not on disk (pruned after 3 days, D-026): extract the hour tars and rerun before a verdict. A raw hit must be the trip's own id in a trip update or vehicle, and only alerts still in the feed during the trip count (D-052). The person checking confirms or overrules each row in the sheet's verdict column, and the Phase 3 report quotes the agreement.
 
 ## Work items
 

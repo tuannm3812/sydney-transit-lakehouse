@@ -190,3 +190,36 @@ async def test_realtime_feeds_send_no_validators(
     await c.poll_once(feed)
     await c.poll_once(feed)
     assert "if-none-match" not in route.calls[1].request.headers
+
+
+@respx.mock
+async def test_not_modified_resets_failure_count(settings: Settings) -> None:
+    # Review 2026-11-25 finding 5: 304s on the timetable counted as
+    # failures, so the next lone 401 skipped D-031's grace and backed off
+    # the full 300 s, and a 503 skipped the exponential ramp.
+    from transit_lakehouse.collector.policy import AUTH_BACKOFF_S
+
+    static = Feed(
+        "static_gtfs", "static_gtfs", "https://example.test/gtfs", 21600
+    )
+    respx.get(static.url).mock(
+        side_effect=[
+            httpx.Response(200, content=b"PK", headers={"ETag": '"v1"'}),
+            httpx.Response(304),
+            httpx.Response(304),
+            httpx.Response(304),
+            httpx.Response(401, text="unauthorised"),
+            httpx.Response(304),
+            httpx.Response(503, text="busy"),
+        ]
+    )
+    c = _collector(settings)
+    for _ in range(4):
+        await c.poll_once(static)
+    rec, backoff = await c.poll_once(static)
+    assert rec.status == 401
+    assert backoff < AUTH_BACKOFF_S
+    await c.poll_once(static)
+    rec, backoff = await c.poll_once(static)
+    assert rec.status == 503
+    assert backoff <= 2.0  # first failure: base backoff, no ramp

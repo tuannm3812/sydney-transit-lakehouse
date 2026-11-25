@@ -36,8 +36,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
+from google.protobuf.message import DecodeError
 
-from transit_lakehouse.worker.decode import read_payload
+from transit_lakehouse.worker.decode import _envelope, read_payload
 
 SYDNEY = "Australia/Sydney"
 
@@ -61,6 +62,7 @@ class Evidence:
     stops_done: int | None
     route_trips_seen: int
     raw_files_scanned: int = 0
+    raw_files_missing: int = 0
     raw_files_with_trip: int = 0
     raw_after_vanish: int = 0
     raw_first_at: datetime | None = None
@@ -171,10 +173,13 @@ def _raw(con, data_dir: Path, ev: Evidence, lo, hi) -> None:
     needle = ev.trip_id.encode()
     for rel, fetched in files:
         path = data_dir / rel
-        if not path.exists():  # pruned or not downloaded: not scanned
+        if not path.exists():
+            # Pruned (D-026) or not downloaded: counted, so the reading
+            # can say the evidence is incomplete instead of clean.
+            ev.raw_files_missing += 1
             continue
         ev.raw_files_scanned += 1
-        if needle in read_payload(path):
+        if carries_trip(read_payload(path), needle):
             ev.raw_files_with_trip += 1
             ev.raw_first_at = ev.raw_first_at or fetched
             ev.raw_last_at = fetched
@@ -182,6 +187,37 @@ def _raw(con, data_dir: Path, ev: Evidence, lo, hi) -> None:
                 minutes=2
             ):
                 ev.raw_after_vanish += 1
+
+
+def carries_trip(payload: bytes, trip_id: bytes) -> bool:
+    """True when an entity's trip update or vehicle names ``trip_id``.
+
+    A byte search alone is not enough: a short numeric trip id such as
+    ``1234`` also occurs inside ``12345`` or in an unrelated field. So a
+    hit is confirmed by walking the protobuf by hand (FeedMessage.entity
+    2, then trip_update 3 or vehicle 4, then trip 1, then trip_id 1),
+    which does not use the worker's decoder. A payload that cannot be
+    walked keeps the byte search's answer, so a broken file is shown to
+    the person checking rather than hidden.
+    """
+    if trip_id not in payload:
+        return False
+    try:
+        for field_no, entity in _envelope(payload):
+            if field_no != 2:
+                continue
+            for kind, body in _envelope(entity):
+                if kind not in (3, 4):
+                    continue
+                for part, trip in _envelope(body):
+                    if part != 1:
+                        continue
+                    for key, value in _envelope(trip):
+                        if key == 1 and value == trip_id:
+                            return True
+    except (DecodeError, IndexError):
+        return True
+    return False
 
 
 def _silver(con, ev: Evidence, lo, hi) -> None:
@@ -224,6 +260,7 @@ def _untracked(con, ev: Evidence, near_m: float) -> None:
     [(count,)] = con.execute(
         "select count(distinct vehicle_id) from silver.vehicle_position"
         " where mode = ? and trip_id is null"
+        " and not coalesce(quarantined, false)"
         " and fetched_at between ? and ?"
         " and 2 * 6371000 * asin(sqrt("
         "   pow(sin(radians(latitude - ?) / 2), 2)"
@@ -243,18 +280,29 @@ def _untracked(con, ev: Evidence, near_m: float) -> None:
 
 
 def _alerts(con, ev: Evidence, lo, hi) -> None:
+    # silver.alert holds a row per version of an alert (new, changed,
+    # removed). A version counts only while it was in the feed: not a
+    # removal, and not replaced or removed before the trip's window.
     rows = con.execute(
-        "select distinct a.alert_id, a.effect, a.header_text"
+        "with versions as ("
+        "   select *, lead(fetched_at) over ("
+        "       partition by alert_id order by fetched_at) as until_at"
+        "   from silver.alert"
+        ")"
+        " select distinct a.alert_id, a.effect, a.header_text"
         " from silver.alert_scope s"
-        " join silver.alert a"
+        " join versions a"
         "   on a.alert_id = s.alert_id and a.content_hash = s.content_hash"
         " join staging.stg_scheduled_trip t"
         "   on t.trip_id = ? and t.service_date = ?"
         " where (s.trip_id = t.trip_id or s.route_id = t.route_id)"
+        " and a.event <> 'removed'"
+        " and a.fetched_at <= ?"
+        " and (a.until_at is null or a.until_at >= ?)"
         " and coalesce(a.active_start, ?) <= ?"
         " and coalesce(a.active_end, ?) >= ?"
         " order by 1",
-        [ev.trip_id, ev.service_date, lo, hi, hi, lo],
+        [ev.trip_id, ev.service_date, hi, lo, lo, hi, hi, lo],
     ).fetchall()
     ev.alerts = [
         f"{aid} ({effect or 'no effect'}): {(text or '')[:80]}"
@@ -277,6 +325,14 @@ def reading(ev: Evidence) -> tuple[str, str]:
             "pipeline_miss",
             f"trip id in {ev.raw_after_vanish} raw files after it "
             "vanished from silver",
+        )
+    if ev.raw_files_missing:
+        return (
+            "raw_incomplete",
+            f"{ev.raw_files_missing} of "
+            f"{ev.raw_files_missing + ev.raw_files_scanned} raw files "
+            "are not on disk; extract the hour tars from object storage "
+            "and run the check again before a verdict",
         )
     if ev.other_start_dates:
         return (
@@ -314,7 +370,8 @@ def to_markdown(evidence: list[Evidence], service_date: date) -> str:
         "checking the trip against the raw positions and the evidence "
         "here.\n\n"
         "| # | trip | route | operator | start (Sydney) | kind | "
-        "confidence | raw files with trip / scanned | silver rows, "
+        "confidence | raw files with trip / scanned / missing | "
+        "silver rows, "
         "any date | untracked near start | alerts | route trips seen | "
         "reading | verdict |\n"
         "|---:|---|---|---|---|---|---|---:|---:|---:|---:|---:|---|---|\n"
@@ -325,7 +382,8 @@ def to_markdown(evidence: list[Evidence], service_date: date) -> str:
             f"| {i} | `{ev.trip_id}` | {ev.route} | {ev.agency} | "
             f"{ev.sched_start_local} | {ev.ghost_kind} | "
             f"{ev.confidence or ''} | "
-            f"{ev.raw_files_with_trip} / {ev.raw_files_scanned} | "
+            f"{ev.raw_files_with_trip} / {ev.raw_files_scanned} / "
+            f"{ev.raw_files_missing} | "
             f"{ev.silver_trip_rows + ev.silver_position_rows} | "
             f"{ev.untracked_nearby} | {len(ev.alerts)} | "
             f"{ev.route_trips_seen} | {ev.reading}: {ev.why} | |"
