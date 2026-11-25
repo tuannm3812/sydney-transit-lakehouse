@@ -24,8 +24,8 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 |---|---|---|---|
 | Ghost trip tracker | `fct_ghost_trip` | judged trip that was never seen (`missing`) or left the feed early (`vanished`) | operators with realtime that day only (D-038); confidence from `fct_trip_outcome` |
 | Route honesty | `mart_route_honesty` | route x service day | ran, missing and vanished shares of judged trips |
-| Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045) |
-| Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable |
+| Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045); overtakes count, pair in timetable order (D-051) |
+| Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable; the map shows stop-hours with 3 or more gaps, the by-hour chart every gap (`bunching_by_hour`, D-051) |
 | Hand-check sheet | `gold handcheck` | sampled ghost trip | raw snapshots searched for the trip id; evidence and an automatic reading; a person writes the verdict |
 | Map replay | `gold replay`, `dashboard/static/replay/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
 | Dashboard | `gold publish`, `dashboard/` | page | Evidence, static, read-only; reads only the public Parquet extract |

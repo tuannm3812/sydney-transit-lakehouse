@@ -1,7 +1,7 @@
 -- The bunching radar's hot spots (Phase 3, D-045): route x direction x
 -- stop x day type x local hour, over every service day built. A gap is
 -- bunched when the observed gap is under bunching_ratio of the
--- timetabled one (fct_headway). The stop's name and position come
+-- timetabled one (fct_headway), overtakes included (D-051). The stop's name and position come
 -- from the timetable version in effect that day.
 with h as (
     select
@@ -13,7 +13,7 @@ with h as (
         d.version
     from {{ ref('fct_headway') }} h
     join {{ ref('stg_service_day') }} d on d.service_date = h.service_date
-    where h.scheduled_headway_s > 0
+    where h.scheduled_headway_s <> 0
 ),
 
 agg as (
@@ -30,10 +30,11 @@ agg as (
         count(distinct service_date) as service_days,
         count(*) as headways,
         count(*) filter (bunched) as bunched,
+        count(*) filter (overtaken) as overtaken,
         round(avg(bunched::int), 4) as bunched_share,
-        round(median(observed_headway_s / scheduled_headway_s), 3)
+        round(median(observed_headway_s / abs(scheduled_headway_s)), 3)
             as median_gap_ratio,
-        round(median(scheduled_headway_s)) as median_scheduled_s,
+        round(median(abs(scheduled_headway_s))) as median_scheduled_s,
         round(median(observed_headway_s)) as median_observed_s
     from h
     group by mode, region, route_id, direction_id, stop_id, day_type,

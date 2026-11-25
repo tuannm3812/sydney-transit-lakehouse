@@ -5,6 +5,8 @@
 -- A loop route calls at some stops twice (often its terminus), so
 -- vehicles are paired per visit: the first call of one trip with the
 -- first call of the next, never with its last.
+-- Vehicles that arrive in the same second are ordered by the timetable,
+-- then by trip id (D-051).
 with arr as (
     select
         a.service_date,
@@ -36,7 +38,7 @@ paired as (
     from arr
     window w as (
         partition by service_date, route_id, direction_id, stop_id, visit
-        order by observed_arrival_utc, trip_id
+        order by observed_arrival_utc, sched_arrival_utc, trip_id
     )
 )
 
@@ -55,9 +57,14 @@ select
     observed_arrival_utc,
     epoch(observed_arrival_utc - prev_observed_utc)::integer as observed_headway_s,
     epoch(sched_arrival_utc - prev_sched_utc)::integer as scheduled_headway_s,
-    epoch(sched_arrival_utc - prev_sched_utc) > 0
+    -- The later trip in the timetable arrived first (D-051).
+    epoch(sched_arrival_utc - prev_sched_utc) < 0 as overtaken,
+    -- An overtake is tested against the size of the timetabled gap, so
+    -- a bus that passes its leader is bunched, not dropped (D-051).
+    epoch(sched_arrival_utc - prev_sched_utc) <> 0
         and epoch(observed_arrival_utc - prev_observed_utc)
-            < {{ var('bunching_ratio') }} * epoch(sched_arrival_utc - prev_sched_utc)
+            < {{ var('bunching_ratio') }}
+                * abs(epoch(sched_arrival_utc - prev_sched_utc))
         as bunched
 from paired
 where prev_trip_id is not null
