@@ -9,6 +9,11 @@
 -- changed). Bus feeds drop each stop once passed, so the first count
 -- shrinks; the metro, light rail and ferry feeds keep passed stops
 -- listed to the end, so only the second one does (D-047).
+-- Stop predictions are stored relative to the trip delay (D-028): a
+-- late bus whose every stop moves by the same amount writes only a new
+-- trip delay. So a stop's latest prediction is shifted by the trip's
+-- delay at exit minus the delay its row was written against, as in
+-- fct_stop_arrival; without it a late trip's stale times look passed.
 -- A trip that left the feed less than partial_min_early_minutes before
 -- its scheduled end also ran: on 22 and 23 Nov 2026 most trips that
 -- left with stops to go left within minutes of their scheduled end,
@@ -17,7 +22,9 @@
 -- A trip is judged only when its trip-update feed was captured from
 -- outcome_lead_minutes before its scheduled start to
 -- outcome_grace_minutes after its scheduled end, so capture gaps and
--- late running are never read as missing buses. "never_seen" means no
+-- late running are never read as missing buses. That holds for every
+-- outcome, ran and cancelled included: judging only the trips that
+-- were seen in a gap would inflate the ran share (D-035, D-048). "never_seen" means no
 -- trip update and no vehicle position mentioned the trip; it is not
 -- proof the bus did not run (docs/7_data_model.md).
 --
@@ -50,6 +57,8 @@ rt as (
         min(stop_count) filter (trip_status <> 'REMOVED') as min_stops_left,
         arg_max(trip_status, fetched_at) filter (trip_status <> 'REMOVED')
             as last_status,
+        arg_max(current_delay_s, fetched_at)
+            filter (trip_status <> 'REMOVED') as exit_delay_s,
         count(*) filter (trip_status <> 'REMOVED') as states
     from {{ ref('stg_rt_trip_state') }}
     group by all
@@ -61,7 +70,8 @@ last_prediction as (
         start_date,
         stop_sequence,
         arg_max(coalesce(arrival_time, departure_time), fetched_at)
-            as predicted_at,
+            as raw_predicted_at,
+        arg_max(trip_delay_s, fetched_at) as row_trip_delay_s,
         max(fetched_at) as changed_at
     from {{ source('silver', 'stop_prediction') }}
     where trip_id is not null
@@ -72,7 +82,15 @@ stops_ahead as (
     select
         rt.trip_id,
         rt.start_date,
-        count(*) filter (where p.predicted_at > ref.left_at) as stops_ahead
+        count(*) filter (
+            where case
+                when p.row_trip_delay_s is null or rt.exit_delay_s is null
+                    then p.raw_predicted_at
+                else p.raw_predicted_at + to_seconds(
+                    (rt.exit_delay_s - p.row_trip_delay_s)::bigint
+                )
+            end > ref.left_at
+        ) as stops_ahead
     from rt
     join last_prediction p
         on p.trip_id = rt.trip_id and p.start_date = rt.start_date
@@ -163,14 +181,14 @@ outcome as (
         coalesce(rs.seen, 0) - (b.seen_tu or b.seen_vp)::int as route_trips_seen,
         os.mode is not null as operator_covered,
         case
+            when not b.tu_covered then 'not_judged'
             when b.last_status = 'CANCELED' then 'cancelled'
             when b.min_stops_left <= {{ var('ran_max_stops_left') }} then 'ran'
             when b.left_feed_at >= b.sched_end_utc
                 - to_minutes({{ var('partial_min_early_minutes') }})
                 then 'ran'
-            when (b.seen_tu or b.seen_vp) and b.tu_covered then 'partial'
-            when not (b.seen_tu or b.seen_vp) and b.tu_covered
-                and os.mode is not null then 'never_seen'
+            when b.seen_tu or b.seen_vp then 'partial'
+            when os.mode is not null then 'never_seen'
             else 'not_judged'
         end as outcome
     from base b
