@@ -3,6 +3,13 @@
 Antigravity CLI (agy), model gemini-4-hydrogen-high, plan mode (read-only), on 8cbaeb4..origin/main
 (5a1b918).
 
+## What happened to the findings
+
+| Finding | Status |
+|---|---|
+| 5. A 304 counted as a backoff failure (B) | Fixed: 200 and 304 both reset the count; regression test `test_not_modified_resets_failure_count` |
+| 6. Gate report claimed no long gap when D-037 outages were allowed (B) | Fixed: the summary names the allowed upstream outages, and D-037 is in the report's decisions; test `test_pass_with_allowed_upstream_outage_says_so` |
+
 ## Verdict
 
 The collector, capture checks, S3 offload, compaction, and D-038/D-047 gold fixes are disciplined and close most of the 18 Nov Codex review items, with the 7-day gate infrastructure sound aside from minor reporting and backoff edge cases. However, three correctness bugs in the gold layer and one state-wipe bug in the light worker directly alter ghost-trip, bunching, and stop-arrival judgements: `fct_trip_outcome` lets `ran` and `cancelled` bypass capture coverage, `stops_ahead` ignores D-028's trip-delay offset, `fct_headway` suppresses bunched pairs when vehicles overtake or tie on timestamp, and `FeedDiffer` wipes its prior-snapshot state on any unreadable or corrupt file. Fix those four defects, plus open `I-20`/`I-21`/`O-04`, before running the post-gate S3 backfill (`D-040`) and Phase 3 gate (`D-046`).

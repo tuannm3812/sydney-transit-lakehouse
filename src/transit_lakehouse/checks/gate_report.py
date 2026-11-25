@@ -33,7 +33,7 @@ SUBTITLE = (
     "on every feed for seven consecutive days, measured from its own "
     "manifest on the collector host."
 )
-DECISIONS = "D-007, D-022, D-031, D-033, D-034"
+DECISIONS = "D-007, D-022, D-031, D-033, D-034, D-037"
 
 
 def _when(iso: str) -> datetime:
@@ -107,10 +107,21 @@ def build(
     window = f"{_dt(gate['window_start'])} to {_dt(gate['window_end'])} UTC"
     daily_rows = sorted(_daily_row(p) for p in daily)
     verdict = "Pass" if passed else "Fail"
+    # D-037: TfNSW outages within the allowance pass but are long gaps.
+    hit = [f for f in feeds if f.get("upstream_outages")]
+    most = max((f["upstream_outages"] for f in hit), default=0)
+    gaps_text = (
+        "with no gap longer than four poll intervals except "
+        f"{most} upstream outage{'s' if most > 1 else ''} on "
+        f"{len(hit)} feed{'s' if len(hit) > 1 else ''}, allowed under "
+        "D-037"
+        if hit
+        else "with no gap longer than four poll intervals"
+    )
     answer = (
         f"The gate **passed**: every one of the {len(feeds)} feeds "
         f"captured at least 99% of its scheduled polls over the seven "
-        f"days, with no gap longer than four poll intervals."
+        f"days, {gaps_text}."
         if passed
         else f"The gate **failed** on {len(failed)} of {len(feeds)} feeds, "
         "so the seven-day clock has not completed."
