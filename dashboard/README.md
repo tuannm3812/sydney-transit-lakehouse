@@ -36,7 +36,7 @@ CI builds the site against the synthetic route in `tests/test_gold_products.py` 
 |---|---|---|
 | `/` | trips checked, share that ran, never seen and vanished, by day and mode | `service_days`, `route_honesty`, `bunching_events` |
 | `/ghosts` | ghost trips by hour, route and operator, and every ghost trip | `ghost_trips`, `route_honesty` |
-| `/bunching` | hot-spot map, bunched share by hour, routes that bunch most, every bunch | `bunching_hotspots`, `bunching_events` |
+| `/bunching` | hot-spot map, bunched share by hour, routes that bunch most, every bunch | `bunching_hotspots`, `bunching_by_hour`, `bunching_events` |
 | `/replay` | the map replay (`static/replay/index.html`, deck.gl on MapLibre) | replay JSON |
 | `/quality` | the last build's checks and trip match by mode | `quality`, `trip_match` |
 

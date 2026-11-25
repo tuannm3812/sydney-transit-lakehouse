@@ -5,7 +5,19 @@
 -- what a rider waiting further down the route sees.
 with h as (
     select * from {{ ref('fct_headway') }}
-    where scheduled_headway_s > 0
+    where scheduled_headway_s <> 0
+),
+
+-- Each pair in timetable order, so an overtake partway along the route
+-- stays one pair instead of splitting into two (D-051).
+ordered as (
+    select
+        *,
+        case when overtaken then trip_id else prev_trip_id end
+            as lead_trip_id,
+        case when overtaken then prev_trip_id else trip_id end
+            as follow_trip_id
+    from h
 ),
 
 pairs as (
@@ -16,10 +28,11 @@ pairs as (
         route_id,
         any_value(route_short_name) as route_short_name,
         direction_id,
-        prev_trip_id as lead_trip_id,
-        trip_id as follow_trip_id,
+        lead_trip_id,
+        follow_trip_id,
         count(*) as stops_paired,
         count(*) filter (bunched) as stops_bunched,
+        count(*) filter (overtaken) as stops_overtaken,
         min(observed_arrival_utc) filter (bunched) as first_bunched_at,
         max(observed_arrival_utc) filter (bunched) as last_bunched_at,
         arg_min(stop_id, stop_sequence) filter (bunched)
@@ -27,10 +40,10 @@ pairs as (
         arg_max(stop_id, stop_sequence) filter (bunched)
             as last_bunched_stop_id,
         min(observed_headway_s) filter (bunched) as min_gap_s,
-        round(median(scheduled_headway_s)) as scheduled_gap_s
-    from h
+        round(median(abs(scheduled_headway_s))) as scheduled_gap_s
+    from ordered
     group by service_date, mode, region, route_id, direction_id,
-        prev_trip_id, trip_id
+        lead_trip_id, follow_trip_id
 )
 
 select

@@ -64,16 +64,28 @@ TABLES: dict[str, str] = {
         from gold.mart_route_reliability
         where trips_judged > 0 or headways > 0
     """,
-    # Hot spots with enough gaps to judge.
+    # Hot spots with enough gaps to judge (the map only).
     "bunching_hotspots": """
         select * from gold.mart_bunching_hotspot
         where headways >= 3 and stop_lat is not null
+    """,
+    # Every gap, for the by-hour chart: the map's filter would drop
+    # quiet stop-hours and bias the share (D-051).
+    "bunching_by_hour": """
+        select
+            mode, day_type, local_hour,
+            sum(headways) as headways,
+            sum(bunched) as bunched,
+            sum(overtaken) as overtaken
+        from gold.mart_bunching_hotspot
+        group by all
     """,
     "bunching_events": """
         select
             service_date, mode, region, route_id, route_short_name,
             direction_id, lead_trip_id, follow_trip_id, stops_paired,
-            stops_bunched, share_of_stops, min_gap_s, scheduled_gap_s,
+            stops_bunched, stops_overtaken, share_of_stops, min_gap_s,
+            scheduled_gap_s,
             strftime(first_bunched_local, '%H:%M') as first_bunched,
             local_hour, day_type
         from gold.fct_bunching_event
