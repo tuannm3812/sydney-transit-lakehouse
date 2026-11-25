@@ -202,7 +202,6 @@ At 099131a.
 
 ## Next steps
 
-- **Mike:** the worker's container limit is 900 MB in `docker-compose.yml` but 700 MB in D-040; which should it be?
 - Make `replay` expire and compact as it goes (I-20) before the overnight S3 backfill (D-040), and fix the window edge (I-21).
 - Judge trains from their trip ids (O-04) and take light rail arrivals from passing predictions.
 - Watch Busways North West over more days to see whether its missing trips repeat.
