@@ -5,7 +5,7 @@
 ```
             ┌──────────────── collector (one asyncio process) ───────────────┐
 TfNSW  ───► │ per-feed schedule (15 s VP / 30 s TU, 1.5 s stagger)            │
-Open Data   │   → global limiter (≤ 4 req/s)                                  │
+Open Data   │   → global limiter (≤ 1 req/s, D-013)                           │
 Hub         │   → GET with "Authorization: apikey …"                          │
             │   → classify: ok | backoff (429/5xx/403 rate) | wait (403 quota)│
             │   → sha256: unchanged? → manifest only                          │

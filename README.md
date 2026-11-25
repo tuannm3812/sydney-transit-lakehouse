@@ -1,6 +1,6 @@
 # Sydney Transit Lakehouse
 
-A live lakehouse built on Transport for NSW's real-time GTFS-realtime feeds. It streams vehicle positions and trip updates for Sydney's buses, trains and metro into Apache Iceberg tables, then runs two products on them: a **ghost bus / timetable honesty tracker** (scheduled trips that never actually ran) and a **live bunching radar** (buses on the same route arriving in clumps).
+A live lakehouse built on Transport for NSW's real-time GTFS-realtime feeds. It streams vehicle positions and trip updates for Sydney's buses, trains, metro, light rail and ferries into Apache Iceberg tables, then runs two products on them: a **ghost bus / timetable honesty tracker** (scheduled trips that never appeared in the realtime feed; "timetable honesty", not proof a bus did not run) and a **live bunching radar** (buses on the same route arriving in clumps).
 
 The project runs on real live data, not a historical dump.
 
@@ -11,7 +11,7 @@ The project runs on real live data, not a historical dump.
 | Stage | What it does | When |
 |---|---|---|
 | **TfNSW Open Data** | Vehicle positions every 15 s, trip updates every 30 s, Service Alerts every 60 s, the static timetable checked every 6 h. GTFS-realtime protobuf, 60,000 calls a day on the API key. | Source |
-| **Collector** | Python on AWS EC2 (t3.small, Docker Compose). Stamps fetch time, skips unchanged snapshots by sha256, backs off on 429/503 at about 1 request a second, and lands gzipped raw protobuf by feed, date and hour. About 27,400 calls a day. | Live since 17 Nov 2026 |
+| **Collector** | Python on AWS EC2 (t3.small, Docker Compose). Stamps fetch time, skips unchanged snapshots by sha256, backs off on 429/503 at about 1 request a second, and lands gzipped raw protobuf by feed, date and hour. About 41,800 calls a day on 12 feeds (D-025). | Live since 17 Nov 2026 |
 | **Bronze and silver tables** | A light always-on worker turns the landed raw snapshots into Iceberg tables. Bronze is the raw snapshots and the poll manifest, kept as the replay source. Silver holds `vehicle_position`, `stop_prediction` (written only when a prediction changes), `trip_status`, `alert` and one `timetable_*` version per published timetable. Redpanda and Spark Structured Streaming run on the same feeds as an on-demand benchmark, compared on latency, cost and upkeep (D-023). | Phase 1 |
 | **Gold marts** | dbt models read by DuckDB: `trip_outcome` (ran, cancelled or never seen, with a confidence level), `route_honesty`, `headway` (bunching) and `prediction_error`. | Phase 2 |
 | **Products** | Ghost-trip tracker, bunching radar, map replay, a public dashboard and a text-to-SQL "ask the network" analyst. | Phases 3–4 |
@@ -26,7 +26,7 @@ The data model is in [docs/7_data_model.md](docs/7_data_model.md), the on-disk l
 
 ## Status
 
-**Phase 0, "Collect first" (week 1), in progress.** The collector has run live on AWS EC2 in Sydney since 17 Nov 2026, polling 8 feeds. The running checklist is in [STATUS.md](STATUS.md), and every decision with its date is in [docs/3_decisions.md](docs/3_decisions.md).
+**Phase 0, "Collect first" (week 1), in progress.** The collector has run live on AWS EC2 in Sydney since 17 Nov 2026, polling 12 feeds since 18 Nov (D-025). The running checklist is in [STATUS.md](STATUS.md), and every decision with its date is in [docs/3_decisions.md](docs/3_decisions.md).
 
 Phase 0 gate: **7 consecutive days at ≥ 99% capture on every enabled feed, and the real API quota confirmed.**
 

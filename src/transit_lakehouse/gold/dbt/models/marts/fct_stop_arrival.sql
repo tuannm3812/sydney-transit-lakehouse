@@ -13,6 +13,12 @@
 -- itself (on 17 Nov, mostly a stale late prediction for several stops
 -- dropped at once); the stop was passed by left_feed_at, so the
 -- observed time is capped there and method says so.
+-- A cap is a time only when few stops dropped at once. When more than
+-- capped_group_max_stops are capped together (a stale late prediction
+-- for a run of stops, then the feed catching up), they all get the same
+-- instant, which is no stop's real arrival: on 23 Nov 2026 such stops
+-- were in 13% of bunched bus gaps (D-054). They keep their row, with
+-- time_known false, and fct_headway and mart_route_reliability skip it.
 -- A trip's last stops drop out when the trip leaves the feed (the
 -- REMOVED row, D-036). That counts as passing them only when at most
 -- ran_max_stops_left stops were still listed; a trip that vanishes
@@ -126,5 +132,9 @@ select
     epoch(pred_arrival_time - to_seconds(pred_arrival_delay_s::bigint))
         - epoch(sched_arrival_utc) as schedule_disagreement_s,
     case when predicted_arrival_utc > left_feed_at
-        then 'capped_at_exit' else 'last_prediction' end as method
+        then 'capped_at_exit' else 'last_prediction' end as method,
+    not (
+        predicted_arrival_utc > left_feed_at
+        and dropped_with > {{ var('capped_group_max_stops') }}
+    ) as time_known
 from timed

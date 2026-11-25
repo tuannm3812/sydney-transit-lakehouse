@@ -201,3 +201,26 @@ def test_quarantined_positions_are_not_untracked_vehicles(con) -> None:
     )
     handcheck._untracked(con, ev, 300.0)
     assert ev.untracked_nearby == 1
+
+
+def test_another_start_date_is_not_a_pipeline_miss() -> None:
+    # The feed carried the trip id, but under the next day's start date:
+    # the raw hit is that run, not a trip gold lost (review 2, finding 2).
+    ev = evidence("1234")
+    ev.raw_files_scanned = 10
+    ev.raw_files_with_trip = 4
+    ev.other_start_dates = ["20261119"]
+    assert handcheck.reading(ev)[0] == "start_date_mismatch"
+    ev.other_start_dates = []
+    assert handcheck.reading(ev)[0] == "pipeline_miss"
+
+
+def test_a_corrupt_raw_file_blocks_a_clean_reading(con, tmp_path) -> None:
+    land(con, tmp_path, "a", feed(["9"]), 0)
+    land(con, tmp_path, "bad", None, 1)
+    bad = tmp_path / "raw/feed=buses_vehiclepos/bad.pb.gz"
+    bad.write_bytes(b"\x1f\x8b\x08\x00not really gzip")
+    ev = evidence("1234")
+    handcheck._raw(con, tmp_path, ev, LO, HI)
+    assert (ev.raw_files_scanned, ev.raw_files_unreadable) == (1, 1)
+    assert handcheck.reading(ev)[0] == "raw_incomplete"

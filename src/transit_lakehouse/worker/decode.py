@@ -252,8 +252,15 @@ def landed_up_to(data_dir: Path, feed: str, upto: str):
     root = data_dir / "raw" / f"feed={feed}"
     if not root.exists():
         return
+    parts = upto.split("/")
+    upto_date = parts[2] if len(parts) > 3 else "~"
+    upto_hour = parts[3] if len(parts) > 3 else "~"
     for date_dir in sorted(root.glob("date=*"), reverse=True):
+        if date_dir.name > upto_date:
+            continue  # newer than the watermark: skip without listing
         for hour_dir in sorted(date_dir.glob("hour=*"), reverse=True):
+            if date_dir.name == upto_date and hour_dir.name > upto_hour:
+                continue
             for path in sorted(hour_dir.glob("*.pb*"), reverse=True):
                 if path.name.endswith(".tmp"):
                     continue

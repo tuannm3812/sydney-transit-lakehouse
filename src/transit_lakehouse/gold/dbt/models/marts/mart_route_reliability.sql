@@ -45,7 +45,7 @@ stops as (
         quantile_cont(a.delay_s, 0.9) as p90_delay_s
     from {{ ref('fct_stop_arrival') }} a
     join trips t on t.trip_id = a.trip_id and t.service_date = a.service_date
-    where not a.skipped
+    where not a.skipped and a.time_known  -- D-054
     group by all
 ),
 

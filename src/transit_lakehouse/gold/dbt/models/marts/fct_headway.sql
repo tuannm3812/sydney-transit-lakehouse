@@ -26,7 +26,8 @@ with arr as (
         on t.trip_id = a.trip_id and t.service_date = a.service_date
     join {{ ref('stg_pattern_stop') }} p
         on p.pattern_id = t.pattern_id and p.stop_sequence = a.stop_sequence
-    where not a.skipped
+    -- a capped run of stops has no real arrival time (D-054)
+    where not a.skipped and a.time_known
 ),
 
 paired as (

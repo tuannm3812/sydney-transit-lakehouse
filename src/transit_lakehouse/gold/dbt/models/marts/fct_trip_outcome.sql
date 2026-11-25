@@ -47,8 +47,11 @@ captured_modes as (
     from {{ ref('stg_capture_window') }}
 ),
 
+-- Every realtime CTE is keyed on mode as well as trip and start date,
+-- as stg_rt_trip_state is, so a trip id two modes share never mixes.
 rt as (
     select
+        mode,
         trip_id,
         start_date,
         min(fetched_at) as first_seen_at,
@@ -64,22 +67,43 @@ rt as (
     group by all
 ),
 
-last_prediction as (
+-- The time and the trip delay come from the same, latest row: two
+-- separate arg_max calls skip nulls on their own and could pair one
+-- row's time with another row's delay.
+last_row as (
     select
+        mode,
         trip_id,
         start_date,
         stop_sequence,
-        arg_max(coalesce(arrival_time, departure_time), fetched_at)
-            as raw_predicted_at,
-        arg_max(trip_delay_s, fetched_at) as row_trip_delay_s,
+        arg_max(
+            {
+                'predicted_at': coalesce(arrival_time, departure_time),
+                'trip_delay_s': trip_delay_s
+            },
+            fetched_at
+        ) as latest,
         max(fetched_at) as changed_at
     from {{ source('silver', 'stop_prediction') }}
     where trip_id is not null
     group by all
 ),
 
+last_prediction as (
+    select
+        mode,
+        trip_id,
+        start_date,
+        stop_sequence,
+        latest.predicted_at as raw_predicted_at,
+        latest.trip_delay_s as row_trip_delay_s,
+        changed_at
+    from last_row
+),
+
 stops_ahead as (
     select
+        rt.mode,
         rt.trip_id,
         rt.start_date,
         count(*) filter (
@@ -93,21 +117,31 @@ stops_ahead as (
         ) as stops_ahead
     from rt
     join last_prediction p
-        on p.trip_id = rt.trip_id and p.start_date = rt.start_date
+        on p.mode = rt.mode
+        and p.trip_id = rt.trip_id
+        and p.start_date = rt.start_date
     join (
         select
+            p.mode,
             p.trip_id,
             p.start_date,
             coalesce(any_value(r.left_feed_at), max(p.changed_at)) as left_at
         from last_prediction p
-        join rt r on r.trip_id = p.trip_id and r.start_date = p.start_date
+        join rt r
+            on r.mode = p.mode
+            and r.trip_id = p.trip_id
+            and r.start_date = p.start_date
         group by all
-    ) ref on ref.trip_id = rt.trip_id and ref.start_date = rt.start_date
+    ) ref
+        on ref.mode = rt.mode
+        and ref.trip_id = rt.trip_id
+        and ref.start_date = rt.start_date
     group by all
 ),
 
 vp as (
     select
+        mode,
         trip_id,
         start_date,
         min(fetched_at) as first_position_at,
@@ -157,10 +191,18 @@ base as (
         rt.trip_id is not null as seen_tu,
         vp.trip_id is not null as seen_vp
     from judged j
-    left join rt on rt.trip_id = j.trip_id and rt.start_date = j.start_date
+    left join rt
+        on rt.mode = j.mode
+        and rt.trip_id = j.trip_id
+        and rt.start_date = j.start_date
     left join stops_ahead sa
-        on sa.trip_id = j.trip_id and sa.start_date = j.start_date
-    left join vp on vp.trip_id = j.trip_id and vp.start_date = j.start_date
+        on sa.mode = j.mode
+        and sa.trip_id = j.trip_id
+        and sa.start_date = j.start_date
+    left join vp
+        on vp.mode = j.mode
+        and vp.trip_id = j.trip_id
+        and vp.start_date = j.start_date
 ),
 
 operator_seen as (
@@ -170,7 +212,11 @@ operator_seen as (
 ),
 
 route_seen as (
-    select service_date, route_id, count(*) filter (seen_tu or seen_vp) as seen
+    select
+        service_date,
+        mode,
+        route_id,
+        count(*) filter (seen_tu or seen_vp) as seen
     from base
     group by all
 ),
@@ -187,13 +233,19 @@ outcome as (
             when b.left_feed_at >= b.sched_end_utc
                 - to_minutes({{ var('partial_min_early_minutes') }})
                 then 'ran'
-            when b.seen_tu or b.seen_vp then 'partial'
+            -- Only an operator in the trip-update feed that day can
+            -- have a partial trip; a trip seen only in positions of an
+            -- uncovered operator is not judged, as never_seen is not.
+            when (b.seen_tu or b.seen_vp) and os.mode is not null
+                then 'partial'
             when os.mode is not null then 'never_seen'
             else 'not_judged'
         end as outcome
     from base b
     left join route_seen rs
-        on rs.service_date = b.service_date and rs.route_id = b.route_id
+        on rs.service_date = b.service_date
+        and rs.mode = b.mode
+        and rs.route_id = b.route_id
     left join operator_seen os
         on os.service_date = b.service_date
         and os.mode = b.mode

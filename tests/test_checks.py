@@ -335,6 +335,39 @@ def test_upstream_outage_within_allowance_warns(tmp_path: Path) -> None:
     assert any("within D-037" in w for w in r.warnings)
 
 
+def test_upstream_outage_within_allowance_passes_the_gate(
+    tmp_path: Path,
+) -> None:
+    # D-037 on a passing gate run: 12 hours at 15 s, with a 5-minute
+    # TfNSW outage of 504s and timeouts, keeps capture above 99%.
+    start = END - timedelta(hours=12)
+    lander = Lander(tmp_path)
+    for i in range(12 * 240):
+        ts = start + timedelta(seconds=15 * i)
+        outage = 1200 <= 15 * i < 1485
+        if outage and i % 2:
+            continue
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=(504 if i % 4 == 0 else None) if outage else 200,
+                outcome=(
+                    ("http_error" if i % 4 == 0 else "network_error")
+                    if outage
+                    else "new"
+                ),
+                latency_ms=1,
+                header_timestamp=None if outage else int(ts.timestamp()) - 5,
+            )
+        )
+    polls = read_polls(tmp_path, start, END)["buses_vehiclepos"]
+    r = evaluate_feed(_feed(), polls, start, END, True, active_since=start)
+    assert r.passed, r.failures
+    assert r.upstream_outages == 1
+    assert any("within D-037" in w for w in r.warnings)
+
+
 def test_gap_without_attempts_still_fails(tmp_path: Path) -> None:
     _write_outage(tmp_path, [])
     r = _eval(tmp_path)
