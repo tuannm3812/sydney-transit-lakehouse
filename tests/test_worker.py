@@ -616,3 +616,25 @@ def test_failed_file_keeps_alert_and_vehicle_state(data_dir: Path) -> None:
     events = [r["event"] for r in rows(catalog, "silver.alert")]
     assert events == ["new"]  # no "removed" then "new" around the bad file
     assert len(rows(catalog, "silver.vehicle_position")) == 1
+
+
+def test_landed_up_to_skips_newer_folders(tmp_path: Path) -> None:
+    from transit_lakehouse.worker import decode
+
+    feed = "raw/feed=buses_vehiclepos"
+    for rel in (
+        "date=2026-11-17/hour=23/a.pb.gz",
+        "date=2026-11-18/hour=01/b.pb.gz",
+        "date=2026-11-18/hour=01/c.pb.gz",
+        "date=2026-11-18/hour=02/d.pb.gz",
+        "date=2026-11-19/hour=00/e.pb.gz",
+    ):
+        path = tmp_path / feed / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")
+    upto = f"{feed}/date=2026-11-18/hour=01/b.pb.gz"
+    got = list(decode.landed_up_to(tmp_path, "buses_vehiclepos", upto))
+    assert got == [
+        f"{feed}/date=2026-11-18/hour=01/b.pb.gz",
+        f"{feed}/date=2026-11-17/hour=23/a.pb.gz",
+    ]

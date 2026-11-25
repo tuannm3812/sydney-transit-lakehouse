@@ -28,8 +28,10 @@ column; the agreement is what the gate report quotes.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
+import zlib
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
@@ -63,6 +65,7 @@ class Evidence:
     route_trips_seen: int
     raw_files_scanned: int = 0
     raw_files_missing: int = 0
+    raw_files_unreadable: int = 0
     raw_files_with_trip: int = 0
     raw_after_vanish: int = 0
     raw_first_at: datetime | None = None
@@ -178,8 +181,15 @@ def _raw(con, data_dir: Path, ev: Evidence, lo, hi) -> None:
             # can say the evidence is incomplete instead of clean.
             ev.raw_files_missing += 1
             continue
+        try:
+            payload = read_payload(path)
+        except (OSError, EOFError, gzip.BadGzipFile, zlib.error):
+            # A corrupt or half-written file: counted with the missing
+            # ones, so it blocks a clean reading instead of crashing.
+            ev.raw_files_unreadable += 1
+            continue
         ev.raw_files_scanned += 1
-        if carries_trip(read_payload(path), needle):
+        if carries_trip(payload, needle):
             ev.raw_files_with_trip += 1
             ev.raw_first_at = ev.raw_first_at or fetched
             ev.raw_last_at = fetched
@@ -314,6 +324,14 @@ def reading(ev: Evidence) -> tuple[str, str]:
     """The automatic reading of the evidence, and why."""
     if ev.raw_files_scanned == 0:
         return "no_raw", "no raw files on disk for the trip's window"
+    if ev.ghost_kind == "missing" and ev.other_start_dates:
+        # The raw hit is the same trip id under another start date, so
+        # it is not a trip gold lost (antigravity review 2, finding 2).
+        return (
+            "start_date_mismatch",
+            "the feed carried this trip id under start date "
+            + ", ".join(ev.other_start_dates),
+        )
     if ev.ghost_kind == "missing" and ev.raw_files_with_trip:
         return (
             "pipeline_miss",
@@ -326,13 +344,13 @@ def reading(ev: Evidence) -> tuple[str, str]:
             f"trip id in {ev.raw_after_vanish} raw files after it "
             "vanished from silver",
         )
-    if ev.raw_files_missing:
+    absent = ev.raw_files_missing + ev.raw_files_unreadable
+    if absent:
         return (
             "raw_incomplete",
-            f"{ev.raw_files_missing} of "
-            f"{ev.raw_files_missing + ev.raw_files_scanned} raw files "
-            "are not on disk; extract the hour tars from object storage "
-            "and run the check again before a verdict",
+            f"{absent} of {absent + ev.raw_files_scanned} raw files "
+            "are not on disk or unreadable; extract the hour tars "
+            "from object storage and run the check again before a verdict",
         )
     if ev.other_start_dates:
         return (
@@ -370,7 +388,7 @@ def to_markdown(evidence: list[Evidence], service_date: date) -> str:
         "checking the trip against the raw positions and the evidence "
         "here.\n\n"
         "| # | trip | route | operator | start (Sydney) | kind | "
-        "confidence | raw files with trip / scanned / missing | "
+        "confidence | raw files with trip / scanned / missing or unreadable | "
         "silver rows, "
         "any date | untracked near start | alerts | route trips seen | "
         "reading | verdict |\n"
@@ -383,7 +401,7 @@ def to_markdown(evidence: list[Evidence], service_date: date) -> str:
             f"{ev.sched_start_local} | {ev.ghost_kind} | "
             f"{ev.confidence or ''} | "
             f"{ev.raw_files_with_trip} / {ev.raw_files_scanned} / "
-            f"{ev.raw_files_missing} | "
+            f"{ev.raw_files_missing + ev.raw_files_unreadable} | "
             f"{ev.silver_trip_rows + ev.silver_position_rows} | "
             f"{ev.untracked_nearby} | {len(ev.alerts)} | "
             f"{ev.route_trips_seen} | {ev.reading}: {ev.why} | |"
