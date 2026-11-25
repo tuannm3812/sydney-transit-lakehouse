@@ -96,7 +96,7 @@ Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); not
 - [x] Map replay: hourly export and a deck.gl viewer
 - [x] Evidence dashboard over a public Parquet extract (D-044, D-045); CI builds it on synthetic data
 - [x] Run on 2 real service days (22 and 23 Nov) from S3 hours: R3-01, `docs/reports/phase3-realdays-20261124.md`. 0.45% of Monday's judged trips missing (161 of 166 at Busways North West; refreshed 25 Nov on D-048, D-052 and D-053), 3,184 bus bunches on D-051, no pipeline miss in 40 hand-checked trips; three judging rules fixed (D-047)
-- [ ] **Mike:** verdicts on the two hand-check sheets (`docs/reports/handcheck-20261122.md`, `handcheck-20261123.md`)
+- [x] Mike: verdicts on the two hand-check sheets, all 40 agree (25 Nov)
 - [ ] Replay expires and compacts as it goes (I-20) and the gold window keeps the day before (I-21), before the S3 backfill
 - [ ] Trains judged from their trip ids; light rail arrivals (O-04)
 - [ ] Live radar from the latest trip updates (after the worker is live)

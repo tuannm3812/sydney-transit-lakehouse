@@ -19,7 +19,7 @@ evidence: hour tars from the offload bucket (data/_downloads in the cloud sessio
 
 > The ghost tracker and the bunching radar work on real data. On Monday 23 Nov **166 of 37,248 judged trips (0.45%)** never appeared in the feed, and 161 of them were one bus operator's. The run also exposed three judging rules that turned finished metro, light rail and ferry trips into ghosts; they are fixed (D-047).
 
-- **The pipeline kept every trip.** None of the 40 hand-check trips is a `pipeline_miss`: no raw snapshot in a trip's window carried a trip that gold called missing (section 3.7).
+- **The pipeline kept every trip.** None of the 40 hand-check trips is a `pipeline_miss`, and Mike agreed with all 40 readings (section 3.7).
 - **Ghosts are rare and concentrated.** On 23 Nov Busways North West had 161 of the 166 missing trips, on routes 292, 293, 513, 523 and 524; route 292 lost 66 of 98 judged trips (section 3.5).
 - **Three rules were wrong on real feeds.** Before D-047 the first build flagged 2,819 trips as vanished over the two days; after it, 55 (section 3.3).
 - **Bunching peaks in the afternoon.** 3,184 bus bunches on Monday, 1,374 of them starting between 3 and 7 pm, and 5.4% of all bus gaps bunched at 4 pm; route 309 bunched at 11 of 13 gaps along Botany Road at 5 pm (section 3.6).
@@ -170,7 +170,7 @@ At 98dd326 (D-052); the sheets are unchanged from 8ae76fa. 20 ghost trips a day,
 | Sun 22 Nov | 36 | 20 | 17,532 | 0 | **0** | 3 | 17 |
 | Mon 23 Nov | 187 | 20 | 12,945 | 0 | **0** | 15 | 5 |
 
-The sheets are `handcheck-20261122.md` and `handcheck-20261123.md` in this folder, with the verdict column empty for Mike. A first read of the Monday sheet: 10 of its 15 missing trips are Busways North West's and 3 are Sydney Ferries F3 trips on a route with 126 other trips seen. 6 of the 15 are low-confidence trips on school or special routes (for example 610w, 619w, S089) that had no trip at all in the feed that day, which points to an untracked service rather than a ghost. Under the gate's bar (D-046) those 6 would need a verdict each. The 5 vanished trips left with 3 to 28 stops to go and did not come back. The same 40 trips were drawn as at 9928028 and every reading is the same; D-048's delay shift moved two trips' stops done by one.
+The sheets are `handcheck-20261122.md` and `handcheck-20261123.md` in this folder. Mike checked both on 25 Nov and agreed with all 40 readings, so on these two days 40 of 40 hold up and none is a pipeline miss, above the D-046 bar of 18 of 20. The gate itself is still run on backfilled history once the worker is live. A first read of the Monday sheet: 10 of its 15 missing trips are Busways North West's and 3 are Sydney Ferries F3 trips on a route with 126 other trips seen. 6 of the 15 are low-confidence trips on school or special routes (for example 610w, 619w, S089) that had no trip at all in the feed that day, which points to an untracked service rather than a ghost. Mike agreed those 6 are consistent with the evidence as flagged (low confidence, route absent from the feed). The 5 vanished trips left with 3 to 28 stops to go and did not come back. The same 40 trips were drawn as at 9928028 and every reading is the same; D-048's delay shift moved two trips' stops done by one.
 
 ### Dashboard extract and map replay
 
@@ -186,7 +186,7 @@ At 98dd326 for the extract; the map replay is from 9c3ff64 and D-053 does not to
 - **The products answer the brief's questions on real data.** Monday's ghost share is 0.51% for buses, and it points at one operator and five routes; Sunday's is 0.15% (section 3.4, section 3.5).
 - **A feed's habits decide the rules.** Each of the three D-047 fixes came from a TfNSW feed behaviour that synthetic tests had not modelled; `tests/test_gold_real_quirks.py` now builds two of them (section 3.3, D-047).
 - **"Vanished" is now rare and believable.** 55 trips over two days left the feed more than 10 minutes before their scheduled end with stops to go; none was seen again in the raw files (section 3.3, section 3.7).
-- **The hand-check finds no lost trips, but not every flag is a ghost.** No `pipeline_miss` in 40 trips, so the D-046 hard rule holds; the 18 of 20 bar will turn on how low-confidence trips on routes absent from the feed are judged (section 3.7, D-046).
+- **The hand-check holds up.** Mike agreed with all 40 readings and none is a `pipeline_miss`, above the D-046 bar of 18 of 20 a day; low-confidence trips on routes absent from the feed stay flagged as low confidence (section 3.7, D-046).
 - **Bunching is a peak-hour bus problem, and half of it is overtaking.** 43% of Monday's bunches started between 3 and 7 pm, 56% include a bus passing the one ahead, and none happened on ferries or metro (section 3.6, D-051).
 
 ## Limits
@@ -200,7 +200,6 @@ At 98dd326 for the extract; the map replay is from 9c3ff64 and D-053 does not to
 
 ## Next steps
 
-- **Mike:** fill the verdict column of both sheets, or say how low-confidence trips on routes absent from the feed should count toward the gate (D-046).
 - **Mike:** the worker's container limit is 900 MB in `docker-compose.yml` but 700 MB in D-040; which should it be?
 - Make `replay` expire and compact as it goes (I-20) before the overnight S3 backfill (D-040), and fix the window edge (I-21).
 - Judge trains from their trip ids (O-04) and take light rail arrivals from passing predictions.
