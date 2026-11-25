@@ -24,7 +24,7 @@ docker compose run --rm checks gate-report --gate-json docs/reports/capture-7d-g
 
 The first command exits 0 only if every feed passes; upstream outages within the D-037 allowance show as warnings, so the server must run a commit that includes D-037. The second writes report R0-02 as a Draft with the gate table and one row per daily check filled in. Then: copy the draft and the gate JSON into the repo, write the Findings by hand, set the status to Final, render the PDF (`python -m transit_lakehouse.reports <file> --out <dir>`), add the gate decision row, tick the gate in STATUS.md, and update both decks. If the gate fails, the report says which feed and why; log the incident (docs/10_incidents.md) and decide with Mike whether the clock restarts, as on day 3.
 
-After a pass, the rest of the pre-approved runbook (D-043) runs the same day: deploy the worker (`docker compose --profile worker up -d worker`, docs/9_phase1.md), then start the overnight backfill of the S3 hours since 17 Nov, newest day first, under the 700 MB cap and outside the gold build (D-040). Stop the backfill if a live-watch alert fires.
+After a pass, the rest of the pre-approved runbook (D-043) runs the same day: deploy the worker (`docker compose --profile worker up -d worker`, docs/9_phase1.md), then start the overnight backfill of the S3 hours since 17 Nov, newest day first, under the 900 MB cap and outside the gold build (D-040). Stop the backfill if a live-watch alert fires.
 
 ## Revised timeline (D-039 to D-044)
 
