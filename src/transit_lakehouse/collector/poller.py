@@ -165,7 +165,11 @@ class Collector:
         fetched_at = self.clock()
         latency_ms = (time.monotonic() - started) * 1000
 
-        failures = 0 if status == 200 else self._failures.get(feed.name, 0) + 1
+        # A 304 (D-021) is a success too; counting it would skip the 401
+        # grace (D-031) and the backoff ramp (review 2026-11-25, #5).
+        failures = (
+            0 if status in (200, 304) else self._failures.get(feed.name, 0) + 1
+        )
         self._failures[feed.name] = failures
         verdict = classify(status, headers, failures, now=fetched_at)
 

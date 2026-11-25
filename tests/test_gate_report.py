@@ -84,3 +84,22 @@ def test_failing_gate_names_the_feed(tmp_path: Path) -> None:
     text = out.read_text()
     assert parse(text).meta["verdict"] == "Fail"
     assert "`buses_tripupdates` failed:** gap 2203s" in text
+
+
+def test_pass_with_allowed_upstream_outage_says_so() -> None:
+    # Review 2026-11-25 finding 6: a pass that relied on D-037 still
+    # claimed "no gap longer than four poll intervals".
+    allowed = _feed("buses_tripupdates", 0.9969, 275)
+    allowed["upstream_outages"] = 1
+    allowed["warnings"] = ["upstream outage: 1 outage(s); within D-037"]
+    gate = _run(
+        "2026-11-20T16:00:00+00:00",
+        "2026-11-27T16:00:00+00:00",
+        [allowed, _feed("metro_vehiclepos", 0.9995, 40)],
+    )
+    text = build(gate, [], "a869ede", "2026-11-28", "CI")
+    rep = parse(text)
+    assert rep.meta["verdict"] == "Pass"
+    assert "with no gap longer than four poll intervals." not in text
+    assert "1 upstream outage" in text
+    assert "D-037" in rep.meta["decisions"]
