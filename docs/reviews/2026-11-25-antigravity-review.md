@@ -3,6 +3,13 @@
 Antigravity CLI (agy), model gemini-4-hydrogen-high, plan mode (read-only), on 8cbaeb4..origin/main
 (5a1b918).
 
+## What happened to the findings
+
+| Finding | Status |
+|---|---|
+| 3. Overtakes and same-second ties dropped from bunching (B) | Fixed (D-051): ties ordered by the timetable, overtakes tested on the size of the timetabled gap, pairs kept in timetable order; tests `test_an_overtake_is_bunched_and_stays_one_pair`, `test_a_same_second_tie_follows_the_timetable` |
+| 8. By-hour bunching chart read the filtered hot spots (B) | Fixed (D-051): new unfiltered public table `bunching_by_hour`; test `test_bunching_by_hour_keeps_every_gap` |
+
 ## Verdict
 
 The collector, capture checks, S3 offload, compaction, and D-038/D-047 gold fixes are disciplined and close most of the 18 Nov Codex review items, with the 7-day gate infrastructure sound aside from minor reporting and backoff edge cases. However, three correctness bugs in the gold layer and one state-wipe bug in the light worker directly alter ghost-trip, bunching, and stop-arrival judgements: `fct_trip_outcome` lets `ran` and `cancelled` bypass capture coverage, `stops_ahead` ignores D-028's trip-delay offset, `fct_headway` suppresses bunched pairs when vehicles overtake or tie on timestamp, and `FeedDiffer` wipes its prior-snapshot state on any unreadable or corrupt file. Fix those four defects, plus open `I-20`/`I-21`/`O-04`, before running the post-gate S3 backfill (`D-040`) and Phase 3 gate (`D-046`).
