@@ -12,7 +12,8 @@ only what changed:
   and a ``REMOVED`` row (stop count 0) when a trip in the previous
   snapshot is missing from this one (D-036). A snapshot that failed to
   decode writes no ``REMOVED`` rows, so a bad file never ends every
-  trip at once.
+  trip at once, and a file that failed as a whole (unreadable or a bad
+  envelope) leaves the previous snapshot as the baseline (D-049).
 - ``vehicle_position``: a row when a vehicle's own timestamp differs
   from the previous snapshot (two polls of the same report are one
   event), or the vehicle is new. Implausible readings are kept but
@@ -294,8 +295,15 @@ class FeedDiffer:
         ``emit(table)`` says whether rows for a table are wanted. A table
         that already holds this file (its watermark is past it) gets
         none, but the state still advances.
+
+        A file that failed as a whole is recorded in ``bronze.snapshot``
+        only, and the previous snapshot stays the baseline (D-049):
+        diffing against an empty file would end every trip and alert,
+        then re-emit them all as new on the next good file.
         """
-        if self.kind == "trip_updates":
+        if snap.failed:
+            emitted = 0
+        elif self.kind == "trip_updates":
             emitted = self._trip_updates(snap, out, emit)
         elif self.kind == "vehicle_positions":
             emitted = self._vehicles(snap, out, emit)

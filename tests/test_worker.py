@@ -540,3 +540,79 @@ def test_alerts_history_new_changed_removed(data_dir: Path) -> None:
     assert len(scopes) == 3  # A1 twice (new, changed), A9 once
     snaps = rows(catalog, "bronze.snapshot")
     assert sum(r["entities_repaired"] for r in snaps) == 2
+
+
+def _bad_after(data_dir: Path, rel: str) -> str:
+    """Land an unreadable file 15 s after ``rel`` (the first file, at
+    T0), between it and the next one, and return its path."""
+    assert "T020000" in rel
+    bad = rel.replace("T020000", "T020015")
+    (data_dir / bad).write_bytes(b"not gzip")
+    return bad
+
+
+def _good_bad_good(data_dir: Path, feed: str, first: bytes, last: bytes):
+    """A good file, an unreadable one, then another good file."""
+    good, _ = land(data_dir, feed, [first, last])
+    return _bad_after(data_dir, good)
+
+
+def test_failed_file_keeps_trip_state(data_dir: Path) -> None:
+    """D-049: the next good file diffs against the last good one."""
+    ts = int(T0.timestamp())
+    bad = _good_bad_good(
+        data_dir,
+        TU_FEED.name,
+        tu_bytes(ts, {"A": [0, 30], "B": [60]}),
+        tu_bytes(ts + 30, {"A": [0, 30]}),
+    )
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [TU_FEED])
+    snaps = rows(catalog, "bronze.snapshot")
+    assert [s["decode_error"] is not None for s in snaps].count(True) == 1
+    assert bad in {s["source_file"] for s in snaps}
+    # Stops are written once, by the first file; nothing is re-emitted.
+    assert len(rows(catalog, "silver.stop_prediction")) == 3
+    trips = rows(catalog, "silver.trip_status")
+    status = sorted((r["trip_id"], r["trip_status"]) for r in trips)
+    # B ended: its REMOVED row comes from the next good file.
+    assert status == [("A", "SCHEDULED"), ("B", "REMOVED"), ("B", "SCHEDULED")]
+
+
+def test_run_starting_after_failed_file_seeds_from_last_good(
+    tmp_path: Path,
+) -> None:
+    """A run whose watermark is a failed file looks back to the last
+    readable one, so two runs give the same rows as one (D-049)."""
+    ts = int(T0.timestamp())
+    payloads = (
+        tu_bytes(ts, {"A": [0, 30], "B": [60]}),
+        tu_bytes(ts + 30, {"A": [0, 30]}),
+    )
+    one, two = tmp_path / "one", tmp_path / "two"
+    for d in (one, two):
+        _good_bad_good(d, TU_FEED.name, *payloads)
+    cat_one = open_catalog(one, env={})
+    run_once(one, cat_one, [TU_FEED])
+    cat_two = open_catalog(two, env={})
+    run_once(two, cat_two, [TU_FEED], max_files=2)  # stops at the bad file
+    run_once(two, cat_two, [TU_FEED])
+    for name in ("silver.stop_prediction", "silver.trip_status"):
+        assert rows(cat_two, name) == rows(cat_one, name)
+
+
+def test_failed_file_keeps_alert_and_vehicle_state(data_dir: Path) -> None:
+    ts = int(T0.timestamp())
+    al = alerts_bytes(ts, [alert_entity("A1", "Detour", "R1")])
+    _good_bad_good(data_dir, AL_FEED.name, al, al)
+    _good_bad_good(
+        data_dir,
+        VP_FEED.name,
+        vp_bytes(ts, {"v1": (ts, 5.0)}),
+        vp_bytes(ts + 30, {"v1": (ts, 5.0)}),
+    )
+    catalog = open_catalog(data_dir, env={})
+    run_once(data_dir, catalog, [AL_FEED, VP_FEED])
+    events = [r["event"] for r in rows(catalog, "silver.alert")]
+    assert events == ["new"]  # no "removed" then "new" around the bad file
+    assert len(rows(catalog, "silver.vehicle_position")) == 1
