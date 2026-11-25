@@ -10,6 +10,14 @@ Route R1 (operator A1, with realtime) has four stops ten minutes apart:
   first stop at 08:45: the hand-check reads it as untracked.
 - V1 08:50 appears, then leaves the feed with three stops to go.
 - Q1 belongs to A2, which publishes no realtime: never a ghost.
+
+Two more routes on the same stops test pairing (D-051):
+
+- R3: O1 08:00 runs 11 min 40 s late and O2 08:10 (on time) overtakes
+  it, reaching every stop 100 s ahead: bunched although the timetabled
+  gap between them is negative.
+- R4: Y1 08:00 runs 5 min late and arrives in the same second as X1
+  08:05: the pair is ordered by the timetable, not by trip id.
 """
 
 from __future__ import annotations
@@ -47,6 +55,10 @@ TRIPS = {
     "G2": ("R1", "08:45", None),
     "V1": ("R1", "08:50", 0),
     "Q1": ("R2", "08:05", None),
+    "O1": ("R3", "08:00", 700),
+    "O2": ("R3", "08:10", 0),
+    "Y1": ("R4", "08:00", 300),
+    "X1": ("R4", "08:05", 0),
 }
 V1_GONE = "08:52"  # V1 leaves the feed here, with S2 to S4 to go
 
@@ -69,7 +81,9 @@ def gtfs() -> bytes:
         "routes.txt": "route_id,agency_id,route_short_name,route_desc,"
         "route_type\n"
         "R1,A1,R1,Sydney Buses Network,700\n"
-        "R2,A2,R2,Sydney Buses Network,700\n",
+        "R2,A2,R2,Sydney Buses Network,700\n"
+        "R3,A1,R3,Sydney Buses Network,700\n"
+        "R4,A1,R4,Sydney Buses Network,700\n",
         "stops.txt": "stop_id,stop_name,stop_lat,stop_lon\n"
         + "".join(
             f"{s},Stop {s},{lat},{lon}\n" for s, (lat, lon) in STOPS.items()
@@ -230,7 +244,7 @@ def test_route_honesty_counts_only_judged_trips(db: Path) -> None:
         "select route_id, trips_scheduled, trips_judged, trips_ran,"
         " trips_missing, trips_vanished, ran_share, ghost_share"
         " from gold.mart_route_honesty where service_date = '2026-11-18'"
-        " order by route_id",
+        " and route_id in ('R1', 'R2') order by route_id",
     )
     assert got == [
         ("R1", 6, 6, 3, 2, 1, 0.5, 0.5),
@@ -243,9 +257,41 @@ def test_a_pair_bunched_at_every_stop_is_one_bunch(db: Path) -> None:
         db,
         "select lead_trip_id, follow_trip_id, stops_paired,"
         " stops_bunched, min_gap_s, scheduled_gap_s, local_hour"
-        " from gold.fct_bunching_event",
+        " from gold.fct_bunching_event where route_id = 'R1'",
     )
     assert got == [("B1", "B2", 4, 4, 120, 600, 8)]
+
+
+def test_an_overtake_is_bunched_and_stays_one_pair(db: Path) -> None:
+    # O2 reaches every stop 100 s before O1, which was timetabled 10 min
+    # earlier: the gap is a third of the timetabled 600 s or less, so it
+    # is bunched, and the pair keeps its timetable order (D-051).
+    got = query(
+        db,
+        "select prev_trip_id, trip_id, observed_headway_s,"
+        " scheduled_headway_s, overtaken, bunched from gold.fct_headway"
+        " where route_id = 'R3' order by stop_sequence",
+    )
+    assert got == [("O2", "O1", 100, -600, True, True)] * 4
+    events = query(
+        db,
+        "select lead_trip_id, follow_trip_id, stops_paired,"
+        " stops_bunched, stops_overtaken, scheduled_gap_s"
+        " from gold.fct_bunching_event where route_id = 'R3'",
+    )
+    assert events == [("O1", "O2", 4, 4, 4, 600)]
+
+
+def test_a_same_second_tie_follows_the_timetable(db: Path) -> None:
+    # Y1 (08:00, 5 min late) and X1 (08:05) reach each stop together.
+    # X1 sorts first by trip id; the timetable puts Y1 first (D-051).
+    got = query(
+        db,
+        "select prev_trip_id, trip_id, observed_headway_s,"
+        " scheduled_headway_s, overtaken, bunched from gold.fct_headway"
+        " where route_id = 'R4' order by stop_sequence",
+    )
+    assert got == [("Y1", "X1", 0, 300, False, True)] * 4
 
 
 def test_hotspots_carry_the_stop_and_its_share(db: Path) -> None:
@@ -253,7 +299,7 @@ def test_hotspots_carry_the_stop_and_its_share(db: Path) -> None:
         db,
         "select stop_id, stop_name, headways, bunched, bunched_share,"
         " stop_lat is not null from gold.mart_bunching_hotspot"
-        " where stop_id = 'S1' order by local_hour",
+        " where stop_id = 'S1' and route_id = 'R1' order by local_hour",
     )
     # At S1: B1->B2 is bunched (2 of 10 min); B2->B3 and B3->V1 are
     # not (20 of 20 min).
@@ -340,9 +386,9 @@ def test_replay_writes_hours_tracks_and_bunches(
     assert secs == sorted(secs)
     assert all(0 <= s < 3600 for s in secs)
     bunches = json.loads((out / "2026-11-18" / "bunches.json").read_text())
-    assert [(b["lead_trip_id"], b["follow_trip_id"]) for b in bunches] == [
-        ("B1", "B2")
-    ]
+    assert sorted(
+        (b["lead_trip_id"], b["follow_trip_id"]) for b in bunches
+    ) == [("B1", "B2"), ("O1", "O2"), ("Y1", "X1")]
 
 
 def test_publish_writes_only_the_public_tables(
@@ -355,7 +401,7 @@ def test_publish_writes_only_the_public_tables(
         f"{name}.parquet" for name in publish.TABLES
     )
     assert rows["ghost_trips"] == 3
-    assert rows["bunching_events"] == 1
+    assert rows["bunching_events"] == 3
     assert rows["quality"] > 0
     # Parquet any DuckDB reads, whatever the gold file's storage version
     [(kinds,)] = duckdb.sql(
@@ -363,6 +409,29 @@ def test_publish_writes_only_the_public_tables(
         f" from read_parquet('{out / 'ghost_trips.parquet'}')"
     ).fetchall()
     assert kinds == ["missing", "vanished"]
+
+
+def test_bunching_by_hour_keeps_every_gap(db: Path, tmp_path: Path) -> None:
+    # The hot-spot map drops stop-hours with fewer than 3 gaps; the
+    # by-hour chart must not, or quiet routes vanish from it (D-051).
+    # R3 and R4 have one gap per stop, so only R1 is on the map.
+    out = tmp_path / "public"
+    with duckdb.connect(str(db)) as con:
+        publish.publish(con, out)
+        [(all_gaps, all_bunched)] = con.execute(
+            "select count(*), count(*) filter (where bunched)"
+            " from gold.fct_headway where scheduled_headway_s <> 0"
+        ).fetchall()
+    [(gaps, bunched)] = duckdb.sql(
+        "select sum(headways), sum(bunched)"
+        f" from read_parquet('{out / 'bunching_by_hour.parquet'}')"
+    ).fetchall()
+    assert (gaps, bunched) == (all_gaps, all_bunched)
+    [(on_map,)] = duckdb.sql(
+        "select list(distinct route_id order by route_id)"
+        f" from read_parquet('{out / 'bunching_hotspots.parquet'}')"
+    ).fetchall()
+    assert on_map == ["R1"]
 
 
 def test_replay_hours_follow_daylight_saving() -> None:
