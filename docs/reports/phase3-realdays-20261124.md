@@ -7,9 +7,9 @@ status: Interim
 verdict: Info
 date: 2026-11-25
 window: 21 Nov 2026 11:00 to 24 Nov 2026 00:00 UTC (raw hours); service days Sunday 22 and Monday 23 Nov 2026 (Sydney) reported
-commit: 98dd326 (gold, hand-check; main e5e2420 + D-053); 9c3ff64 (map replay)
+commit: 099131a (gold, extract, map replay; main e5e2420 + D-053, D-054); 98dd326 (hand-check)
 environment: Cloud Linux container (x86, 4 cores, 15 GB), Python 3.13, DuckDB 2.0.1, dbt-core 1.12.7, pyiceberg 0.12.0; gold run with GOLD_MEMORY_LIMIT 8GB and 4 threads. Nothing ran on the collector host.
-decisions: D-026, D-038, D-042, D-045, D-046, D-047, D-048, D-051, D-052, D-053
+decisions: D-026, D-038, D-042, D-045, D-046, D-047, D-048, D-051, D-052, D-053, D-054
 evidence: hour tars from the offload bucket (data/_downloads in the cloud session, gitignored); docs/reports/handcheck-20261122.md and handcheck-20261123.md; gold database and public extract rebuilt by the commands in the appendix (gitignored)
 ---
 
@@ -22,12 +22,12 @@ evidence: hour tars from the offload bucket (data/_downloads in the cloud sessio
 - **The pipeline kept every trip.** None of the 40 hand-check trips is a `pipeline_miss`, and Mike agreed with all 40 readings (section 3.7).
 - **Ghosts are rare and concentrated.** On 23 Nov Busways North West had 161 of the 166 missing trips, on routes 292, 293, 513, 523 and 524; route 292 lost 66 of 98 judged trips (section 3.5).
 - **Three rules were wrong on real feeds.** Before D-047 the first build flagged 2,819 trips as vanished over the two days; after it, 55 (section 3.3).
-- **Bunching peaks in the afternoon.** 3,184 bus bunches on Monday, 1,374 of them starting between 3 and 7 pm, and 5.4% of all bus gaps bunched at 4 pm; route 309 bunched at 11 of 13 gaps along Botany Road at 5 pm (section 3.6).
+- **Bunching peaks in the afternoon.** 2,274 bus bunches on Monday, 1,003 of them starting between 3 and 7 pm, and 4.3% of all bus gaps bunched at 4 pm; route 392 bunched at 5 of 6 gaps along Bunnerong Road at 6 pm (section 3.6).
 - **Two days replayed in about 2 hours.** 102,864 snapshots became 126.7 million stop predictions and 14.2 million positions; the gold build took 2.5 minutes (sections 3.1 and 3.2).
 
 ## Scope and method
 
-The raw hour tars (D-026) for 21 Nov 11:00 to 24 Nov 00:00 UTC, 9.1 GB, were downloaded read-only from the offload bucket, together with the five timetables published from 20 Nov 19:45 UTC on. That covers Sydney service days 22 and 23 Nov in full, plus the evening of 21 Nov and the morning of 24 Nov, which are built but not reported. The worker loaded the timetables with `run --once`, then `replay` rebuilt the realtime tables feed by feed into an empty lakehouse. The gold build ran without a service-day window (incident I-21), then `gold handcheck`, `gold publish` and `gold replay`. This edition, of 25 Nov, rebuilds gold on `main` with D-048, which judges a trip only when its feed was captured around its whole run, and regenerates the sheets with the hand-check fixes of D-052. It was rebuilt again at 9c3ff64, `main` with D-051, which counts overtakes as bunching. The ghost counts and the sheets did not change; the number of judged trips (D-048) and the bunching numbers (D-051) did (section 3.4, section 3.6). A last rebuild at 98dd326 applies D-053 from the second Antigravity review: realtime is matched within a mode, which takes Newcastle's Stockton ferry and one light rail trip out of the judgement, so Monday has 187 ghosts in 37,248 judged trips.
+The raw hour tars (D-026) for 21 Nov 11:00 to 24 Nov 00:00 UTC, 9.1 GB, were downloaded read-only from the offload bucket, together with the five timetables published from 20 Nov 19:45 UTC on. That covers Sydney service days 22 and 23 Nov in full, plus the evening of 21 Nov and the morning of 24 Nov, which are built but not reported. The worker loaded the timetables with `run --once`, then `replay` rebuilt the realtime tables feed by feed into an empty lakehouse. The gold build ran without a service-day window (incident I-21), then `gold handcheck`, `gold publish` and `gold replay`. This edition, of 25 Nov, rebuilds gold on `main` with D-048, which judges a trip only when its feed was captured around its whole run, and regenerates the sheets with the hand-check fixes of D-052. It was rebuilt again at 9c3ff64, `main` with D-051, which counts overtakes as bunching. The ghost counts and the sheets did not change; the number of judged trips (D-048) and the bunching numbers (D-051) did (section 3.4, section 3.6). A last rebuild at 98dd326 applies D-053 from the second Antigravity review: realtime is matched within a mode, which takes Newcastle's Stockton ferry and one light rail trip out of the judgement, so Monday has 187 ghosts in 37,248 judged trips. A rebuild at 099131a applies D-054, found while drawing a bunching example: a run of stops capped at one instant is no arrival, which takes Monday from 3,184 bunches to 2,274; ghosts do not change.
 
 ```flow
 store | Hour tars | 2.5 days, 11 realtime feeds, from object storage
@@ -130,36 +130,38 @@ Busways North West had 2,831 judged trips that day, and 161 of them never appear
 
 ### Bunching radar
 
-At 98dd326, with D-051. A bunch is two consecutive buses of a route and direction bunched at 3 stops or more (D-045). Under D-051 a bus that overtakes its late leader counts as bunched instead of being dropped, and a pair stays one bunch through the overtake, so every count is higher than the 8ae76fa edition (Monday 2,844 bunches, 2.26% of gaps).
+At 099131a, with D-051 and D-054. A bunch is two consecutive buses of a route and direction bunched at 3 stops or more (D-045). D-051 counts a bus that overtakes its late leader as bunched and keeps a pair one bunch through the overtake. D-054 drops stops whose time was capped at one instant with a run of others, which made up zero gaps: 20,373 of Monday's 1.7 million bus arrivals (1.2%) lose their time, and Monday's bunches fall from 3,184 (at 98dd326) to 2,274. The 8ae76fa edition, before both, had 2,844.
 
 | Service day | Bus gaps measured | Gaps bunched | Of them overtakes | *Bunches* | Top route (bunches) |
 |---|---:|---:|---:|---:|---|
-| Sun 22 Nov | 848,480 | 22,153 (2.61%) | 6,307 | 1,471 | 333 (291) |
-| Mon 23 Nov | 1,482,112 | 47,047 (3.17%) | 13,430 | **3,184** | 333 (178) |
+| Sun 22 Nov | 840,387 | 18,409 (2.19%) | 4,888 | 1,138 | 333 (254) |
+| Mon 23 Nov | 1,464,287 | 35,752 (2.44%) | 8,894 | **2,274** | 333 (152) |
 
-Overtakes matter: 13,430 of Monday's 47,047 bunched gaps were a bus passing the one ahead, and 1,770 of the 3,184 bunches (56%) include at least one overtake. A bunch lasts a median 11 stops, about 57% of the stops the two buses share. On Monday the next routes were 309 (155), 390X (127), 392 (109) and 100 (87); on Sunday 144 (104) and 390X (73). The strongest weekday hot spots are route 309 on Botany Road at Green Square and Mandible St at 5 pm, where 11 of 13 gaps were bunched, and route 392 along Bunnerong Road at 6 pm (5 of 6). Ferries (940 gaps) had 2 bunched gaps, both overtakes, and no bunch; metro (1,669 gaps) had none.
+8,894 of Monday's 35,752 bunched gaps were a bus passing the one ahead, and 1,083 of the 2,274 bunches (48%) include at least one overtake. A bunch lasts a median 11 stops, half the stops the two buses share. On Monday the next routes were 309 (96), 390X (80), 100 (58) and 423 (56); on Sunday 144 (74) and 390X (55). The strongest weekday hot spots are route 392 along Bunnerong Road at 6 pm, bunched at 5 of 6 gaps at five stops in a row, and route 309 on Beauchamp Road at 4 pm (10 of 13). Ferries (940 gaps) had 2 bunched gaps, both overtakes, and no bunch; metro (1,669 gaps) had none.
 
 ```chart
-title: Share of bus gaps bunched by hour, Monday 23 Nov, at 98dd326
+title: Share of bus gaps bunched by hour, Monday 23 Nov, at 099131a
 unit: %
-6 am: 2.6
-7 am: 4.0
-8 am: 4.5
-9 am: 3.6
-10 am: 2.2
-11 am: 1.5
-12 pm: 1.9
-1 pm: 2.1
-2 pm: 3.2
-3 pm: 4.5
-4 pm: 5.4
-5 pm: 5.0
-6 pm: 4.0
-7 pm: 2.3
-8 pm: 1.4
+6 am: 0.9
+7 am: 2.8
+8 am: 3.9
+9 am: 3.2
+10 am: 1.8
+11 am: 1.3
+12 pm: 1.6
+1 pm: 1.8
+2 pm: 1.6
+3 pm: 3.2
+4 pm: 4.3
+5 pm: 4.2
+6 pm: 3.5
+7 pm: 1.5
+8 pm: 1.1
 ```
 
-The chart counts every gap by the hour the second bus reached the stop, as the dashboard's `bunching_by_hour` table does (D-051). Counted as bunches by starting hour instead, the peaks are 7 to 9 am (685) and 3 to 7 pm (1,374).
+The chart counts every gap by the hour the second bus reached the stop, as the dashboard's `bunching_by_hour` table does (D-051). Counted as bunches by starting hour instead, the peaks are 7 to 9 am (504) and 3 to 7 pm (1,003).
+
+A worked example, route 309 towards Redfern on Monday afternoon: two buses timetabled 20 minutes apart left Port Botany 3 minutes apart and stayed together for all 43 stops, the later one ahead at 26 of them; at Redfern 5 buses arrived within 9 minutes from 4:48 pm, after 12 minutes with none. The figure is `fig_example_bunching.png` in the project's Phase 3 examples folder, drawn from `fct_headway`.
 
 ### Hand-check sheets
 
@@ -174,12 +176,12 @@ The sheets are `handcheck-20261122.md` and `handcheck-20261123.md` in this folde
 
 ### Dashboard extract and map replay
 
-At 98dd326 for the extract; the map replay is from 9c3ff64 and D-053 does not touch it.
+At 099131a.
 
 | Output | Size | Contents |
 |---|---:|---|
-| Public extract (`gold publish`) | 7.5 MB | 9 tables; 329,568 hot-spot rows, 128 bunching-by-hour rows, 7,575 route-day rows, 238 ghost trips |
-| Map replay (`gold replay`) | 175 MB | 48 Sydney hours, positions every 30 s, 4,672 bunches drawn |
+| Public extract (`gold publish`) | 7.3 MB | 9 tables; 324,991 hot-spot rows, 128 bunching-by-hour rows, 7,575 route-day rows, 238 ghost trips |
+| Map replay (`gold replay`) | 175 MB | 48 Sydney hours, positions every 30 s, 3,422 bunches drawn |
 
 ## Findings
 
@@ -187,7 +189,7 @@ At 98dd326 for the extract; the map replay is from 9c3ff64 and D-053 does not to
 - **A feed's habits decide the rules.** Each of the three D-047 fixes came from a TfNSW feed behaviour that synthetic tests had not modelled; `tests/test_gold_real_quirks.py` now builds two of them (section 3.3, D-047).
 - **"Vanished" is now rare and believable.** 55 trips over two days left the feed more than 10 minutes before their scheduled end with stops to go; none was seen again in the raw files (section 3.3, section 3.7).
 - **The hand-check holds up.** Mike agreed with all 40 readings and none is a `pipeline_miss`, above the D-046 bar of 18 of 20 a day; low-confidence trips on routes absent from the feed stay flagged as low confidence (section 3.7, D-046).
-- **Bunching is a peak-hour bus problem, and half of it is overtaking.** 43% of Monday's bunches started between 3 and 7 pm, 56% include a bus passing the one ahead, and none happened on ferries or metro (section 3.6, D-051).
+- **Bunching is a peak-hour bus problem, and half of it is overtaking.** 44% of Monday's bunches started between 3 and 7 pm, 48% include a bus passing the one ahead, and none happened on ferries or metro (section 3.6, D-051, D-054).
 
 ## Limits
 
