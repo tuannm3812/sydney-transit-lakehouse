@@ -4,8 +4,8 @@ Review the work in the git range {RANGE}: run `git log --oneline {RANGE}` and `g
 and read the changed code. The reasons for that work are recorded in docs/3_decisions.md
 (D-NNN rows), docs/10_incidents.md (I-NN rows and O-NN obligations), STATUS.md and the
 docs/reports/ evidence. Read AGENTS.md and docs/0_coding_standards.md first. The previous
-external review is docs/reviews/2026-11-18-codex-review.md; check whether its open items
-were closed and whether the fixes hold.
+external review is {PREVIOUS}; check whether each of its findings was closed, whether the
+fixes hold, and whether a fix introduced a regression.
 
 Rules:
 - Read-only. Do not edit, create, commit or push anything. Do not call the TfNSW API or AWS.
@@ -28,5 +28,5 @@ One row per finding, most severe first:
 ## Decisions to revisit
 Bullets naming the D-NNN row and why.
 
-## Open items from the 18 Nov review
+## Findings from the previous review
 | Item | Status now | Evidence |
