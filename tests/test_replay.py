@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import shutil
 from datetime import timedelta
 from pathlib import Path
 
@@ -117,3 +118,29 @@ def test_verify_catches_a_difference(tmp_path: Path) -> None:
         open_catalog(live, env={}), catalog, FEEDS, start, end
     )
     assert {d.table for d in diffs} >= {"silver.stop_prediction"}
+
+
+def test_replay_seeds_past_a_failed_last_file(tmp_path: Path) -> None:
+    """The hour before the window ends in an unreadable file. Replay
+    keeps the last readable one as its seed, so it still matches the
+    live build, which looks back the same way (D-049)."""
+    live = _live(tmp_path)
+    hour0 = live / f"raw/feed={TU_FEED.name}/date={T0:%Y-%m-%d}/hour={T0:%H}"
+    (hour0 / f"{T0:%Y%m%dT%H}5900.000000Z_badbadbadbad.pb.gz").write_bytes(
+        b"not gzip"
+    )
+    # The live tables were built before the bad file landed; rebuild them
+    # with it in place, as the server would have.
+    rebuilt = tmp_path / "rebuilt"
+    shutil.copytree(live / "raw", rebuilt / "raw")
+    run_once(rebuilt, open_catalog(rebuilt, env={}), FEEDS)
+    bucket = _bucket(rebuilt, tmp_path)
+    start, end = T0 + timedelta(hours=1), T0 + timedelta(hours=2)
+    replayed = tmp_path / "replay"
+    replayed.mkdir()
+    catalog = open_catalog(replayed, env={})
+    rp.replay(rp.LocalTars(bucket), FEEDS, start, end, replayed, catalog)
+    _, diffs = rp.verify(
+        open_catalog(rebuilt, env={}), catalog, FEEDS, start, end
+    )
+    assert diffs == []

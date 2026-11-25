@@ -48,6 +48,13 @@ class Snapshot:
     def partial(self) -> bool:
         return bool(self.decode_error)
 
+    @property
+    def failed(self) -> bool:
+        """The whole file failed (unreadable, or a bad envelope), so it
+        says nothing about which trips, vehicles or alerts exist (D-049).
+        A partial_decode note is not a failure."""
+        return self.decode_error.startswith(("read_error", "decode_error"))
+
 
 def parse_name(name: str) -> tuple[datetime, str]:
     """Return (fetched_at, sha12) from a landed file name."""
@@ -236,3 +243,31 @@ def landed_after(data_dir: Path, feed: str, after: str) -> list[str]:
                 if rel > after:
                     out.append(rel)
     return out
+
+
+def landed_up_to(data_dir: Path, feed: str, upto: str):
+    """Landed realtime files of a feed whose path sorts at or before
+    ``upto``, newest first. Lazy: hour folders are listed one at a time,
+    so a look-back that stops at the first file stays cheap."""
+    root = data_dir / "raw" / f"feed={feed}"
+    if not root.exists():
+        return
+    for date_dir in sorted(root.glob("date=*"), reverse=True):
+        for hour_dir in sorted(date_dir.glob("hour=*"), reverse=True):
+            for path in sorted(hour_dir.glob("*.pb*"), reverse=True):
+                if path.name.endswith(".tmp"):
+                    continue
+                rel = path.relative_to(data_dir).as_posix()
+                if rel <= upto:
+                    yield rel
+
+
+def last_readable(data_dir: Path, feed: str, upto: str) -> Snapshot | None:
+    """The newest snapshot at or before ``upto`` that did not fail as a
+    whole: the baseline a run starting after ``upto`` diffs against, so
+    a bad file at the watermark does not reset the state (D-049)."""
+    for rel in landed_up_to(data_dir, feed, upto):
+        snap = read_snapshot(data_dir, feed, rel)
+        if not snap.failed:
+            return snap
+    return None

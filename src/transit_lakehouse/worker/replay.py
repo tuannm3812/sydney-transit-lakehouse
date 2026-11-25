@@ -44,6 +44,7 @@ from pyiceberg.expressions import (
 )
 
 from transit_lakehouse.collector.config import Feed
+from transit_lakehouse.worker.decode import read_snapshot
 from transit_lakehouse.worker.runner import TABLES_FOR_KIND, run_once
 from transit_lakehouse.worker.tables import commit, ensure_tables
 
@@ -158,8 +159,7 @@ def replay(
             source, feed.name, before - timedelta(hours=1), data_dir
         )
         if seed:
-            for older in seed[:-1]:
-                (data_dir / older).unlink()
+            seed = _trim_to_readable(data_dir, feed.name, seed)
             marks = {feed.name: seed[-1]}
             for name in TABLES_FOR_KIND[feed.kind]:
                 # An earlier feed's run committed to this table through
@@ -178,15 +178,26 @@ def replay(
             stats.files += run.files
             for name, n in run.rows.items():
                 stats.rows[name] = stats.rows.get(name, 0) + n
-            # Keep only the newest file: the next hour's seed.
-            newest = files[-1]
-            for path in _hour_dir(data_dir, feed.name, hour).iterdir():
-                if path.relative_to(data_dir).as_posix() != newest:
-                    path.unlink()
-            for gone in seed:
-                (data_dir / gone).unlink(missing_ok=True)
-            seed = [newest]
+            # Keep the next hour's seed: the files from the newest
+            # readable one on (D-049), usually just the newest file.
+            seed = _trim_to_readable(data_dir, feed.name, seed + files)
     return stats
+
+
+def _trim_to_readable(
+    data_dir: Path, feed: str, files: list[str]
+) -> list[str]:
+    """Delete ``files`` before the newest one that did not fail as a
+    whole and return the rest. A run seeds from the last readable file
+    at or before its watermark (D-049), so that file must stay."""
+    keep = 0
+    for i in range(len(files) - 1, -1, -1):
+        if not read_snapshot(data_dir, feed, files[i]).failed:
+            keep = i
+            break
+    for gone in files[:keep]:
+        (data_dir / gone).unlink(missing_ok=True)
+    return files[keep:]
 
 
 @dataclass

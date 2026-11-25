@@ -28,7 +28,11 @@ from pathlib import Path
 from pyiceberg.catalog import Catalog
 
 from transit_lakehouse.collector.config import Feed
-from transit_lakehouse.worker.decode import landed_after, read_snapshot
+from transit_lakehouse.worker.decode import (
+    landed_after,
+    last_readable,
+    read_snapshot,
+)
 from transit_lakehouse.worker.silver import FeedDiffer, Rows
 from transit_lakehouse.worker.tables import commit, ensure_tables, watermarks
 from transit_lakehouse.worker.timetable import (
@@ -143,10 +147,16 @@ def run_once(
             continue
         differ = FeedDiffer(feed.name, feed.kind)
         if low:
-            if (data_dir / low).exists():
-                differ.seed(read_snapshot(data_dir, feed.name, low))
+            seed = (
+                last_readable(data_dir, feed.name, low)
+                if (data_dir / low).exists()
+                else None
+            )
+            if seed is not None:
+                differ.seed(seed)
             else:
-                # The file before the batch was pruned: its rows are all
+                # The file before the batch was pruned (or no readable
+                # file is left at or before it): its rows are all
                 # emitted as new. Logged, because replay from S3 would
                 # emit them as changes instead.
                 stats.unseeded.append(feed.name)
