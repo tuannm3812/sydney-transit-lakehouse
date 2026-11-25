@@ -5,12 +5,18 @@ Antigravity CLI (agy), model gemini-4-hydrogen-high, plan mode (read-only), on 8
 
 ## What happened to the findings
 
+Follow-up: [review 2](2026-11-25-antigravity-review-2.md) checked these fixes.
+
 | Finding | Status |
 |---|---|
+| 1. Ran and cancelled trips bypassed coverage (C) | Fixed (D-048, PR #35); follow-up review: holds, except VP-only trips of an uncovered operator still read as partial (review 2, finding 3) |
+| 2. Stops to go ignored the D-028 shift (C) | Fixed (D-048, PR #35); follow-up review: shift holds, `mode` keys and the split `arg_max` still open (review 2, finding 3) |
 | 3. Overtakes and same-second ties dropped from bunching (B) | Fixed (D-051): ties ordered by the timetable, overtakes tested on the size of the timetabled gap, pairs kept in timetable order; tests `test_an_overtake_is_bunched_and_stays_one_pair`, `test_a_same_second_tie_follows_the_timetable` |
+| 4. Worker wiped its change state on a failed file (B) | Fixed (D-049, PR #37); follow-up review: holds |
 | 5. A 304 counted as a backoff failure (B) | Fixed: 200 and 304 both reset the count; regression test `test_not_modified_resets_failure_count` |
 | 6. Gate report claimed no long gap when D-037 outages were allowed (B) | Fixed: the summary names the allowed upstream outages, and D-037 is in the report's decisions; test `test_pass_with_allowed_upstream_outage_says_so` |
-| 8. By-hour bunching chart read the filtered hot spots (B) | Fixed (D-051): new unfiltered public table `bunching_by_hour`; test `test_bunching_by_hour_keeps_every_gap` |
+| 7. Hand-check: pruned files, substring matches, stale alerts, quarantined positions (B) | Fixed (D-052, PR #39); follow-up review: holds, but `start_date_mismatch` is still read as `pipeline_miss` (review 2, finding 2) |
+| 8. By-hour bunching chart read the filtered hot spots (B) | Fixed (D-051): new unfiltered public table `bunching_by_hour`; test `test_bunching_by_hour_keeps_every_gap`. The same change pointed the map at it too, which broke the map (review 2, finding 1, fixed there) |
 
 ## Verdict
 
