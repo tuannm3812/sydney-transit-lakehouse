@@ -10,11 +10,11 @@ Follow-up to [the first 25 Nov review](2026-11-25-antigravity-review.md), on the
 | Finding | Status |
 |---|---|
 | 1. Bunching map query reads `bunching_by_hour`, which has no stop columns (C) | Fixed in this PR: `spots` reads `bunching_hotspots` again; only the by-hour chart reads `bunching_by_hour` |
-| 2. Hand-check: `start_date_mismatch` read as `pipeline_miss`; no read-error guard (B) | Open |
-| 3. `fct_trip_outcome`: no `mode` keys, split `arg_max`, VP-only uncovered operator trips become `partial` (B) | Open |
-| 4. R3-01 187 vs 188 and 3.4 vs 1.5 minutes; STATUS bunch count (B) | Open |
-| 5. README and architecture doc stale wording and numbers (A) | Open |
-| 6. Passing D-037 gate untested; `landed_up_to` scans newer folders (A) | Open |
+| 2. Hand-check: `start_date_mismatch` read as `pipeline_miss`; no read-error guard (B) | Fixed in PR #42 (D-053): mismatch is read before `pipeline_miss`; unreadable raw files count as `raw_incomplete`; tests in `test_handcheck_evidence.py` |
+| 3. `fct_trip_outcome`: no `mode` keys, split `arg_max`, VP-only uncovered operator trips become `partial` (B) | Fixed in PR #42 (D-053): keyed on mode, one-row `arg_max`, `partial` needs a covered operator; `test_gold_modes.py` |
+| 4. R3-01 187 vs 188 and 3.4 vs 1.5 minutes; STATUS bunch count (B) | Fixed in PR #42: 187 is right (the 188th was a light rail partial of an uncovered operator, removed by D-053); build time and bunch counts updated, with D-054 |
+| 5. README and architecture doc stale wording and numbers (A) | Fixed in PR #42 |
+| 6. Passing D-037 gate untested; `landed_up_to` scans newer folders (A) | Fixed in PR #42: passing gate test; `landed_up_to` skips newer folders |
 
 ## Verdict
 
