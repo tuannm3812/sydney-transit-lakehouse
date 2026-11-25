@@ -43,6 +43,9 @@ vars:
   # A bunch (Phase 3, D-045): the same two consecutive vehicles are
   # bunched at this many stops or more, so one noisy stop is not one.
   bunch_min_stops: 3
+  # Stops capped at a trip's exit together: more than this many have no
+  # real arrival time (D-054).
+  capped_group_max_stops: 3
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 
