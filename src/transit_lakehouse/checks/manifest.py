@@ -34,6 +34,7 @@ class Poll:
     header_timestamp: int | None
     error: str | None
     headers: dict[str, str]
+    entity_count: int | None = None
 
     @property
     def ok(self) -> bool:
@@ -88,6 +89,7 @@ def read_polls(
                         header_timestamp=raw.get("header_timestamp"),
                         error=raw.get("error"),
                         headers=raw.get("headers") or {},
+                        entity_count=raw.get("entity_count"),
                     )
                 )
         polls.sort(key=lambda p: p.fetched_at)

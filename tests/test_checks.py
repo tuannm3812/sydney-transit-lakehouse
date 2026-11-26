@@ -403,3 +403,51 @@ def test_upstream_allowance_limits() -> None:
     assert count_outages(days) == 3
     assert "3 outages > 2" in allowance_breaches(days, 3, 7)
     assert allowance_breaches(days[:2], 2, 7) == ""
+
+
+def test_empty_frozen_snapshot_is_exempt_from_freshness(
+    tmp_path: Path,
+) -> None:
+    # D-055: on 25 Nov TfNSW froze the ferry feeds overnight on an empty
+    # snapshot (0 entities) with a stale timestamp. With no service there
+    # is nothing to be fresh about; capture and gaps still count.
+    lander = Lander(tmp_path)
+    frozen = int(START.timestamp()) - 7200
+    for i in range(240):
+        ts = START + timedelta(seconds=15 * i)
+        empty = i < 120
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="unchanged" if empty and i else "new",
+                latency_ms=1,
+                header_timestamp=frozen if empty else int(ts.timestamp()) - 5,
+                entity_count=0 if empty else 40,
+            )
+        )
+    r = _eval(tmp_path)
+    assert r.passed, r.failures
+    assert r.freshness_p95_s is not None and r.freshness_p95_s < 60
+
+
+def test_stale_feed_with_vehicles_still_fails_freshness(
+    tmp_path: Path,
+) -> None:
+    lander = Lander(tmp_path)
+    frozen = int(START.timestamp()) - 7200
+    for i in range(240):
+        ts = START + timedelta(seconds=15 * i)
+        lander.record(
+            PollRecord(
+                feed="buses_vehiclepos",
+                fetched_at=ts.isoformat(),
+                status=200,
+                outcome="new",
+                latency_ms=1,
+                header_timestamp=frozen,
+                entity_count=40,
+            )
+        )
+    assert any(f.startswith("freshness") for f in _eval(tmp_path).failures)

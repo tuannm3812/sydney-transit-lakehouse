@@ -15,6 +15,10 @@ Definitions (see docs/3_decisions.md D-007):
   and learned nothing moved.
 * freshness = fetch time minus the feed header's own timestamp.
 * staleness = now minus the last successful poll.
+* An empty snapshot (0 entities) is left out of freshness (D-055): with
+  no vehicles or trips there is nothing to be fresh about, and TfNSW
+  leaves an empty ferry feed's timestamp frozen overnight. Capture and
+  gaps still count every poll.
 * stuck = a realtime feed returning the same sha256 for more than
   5 minutes. It is a warning, not a failure (D-019): the gateway is up
   but upstream may have frozen, which only TfNSW can fix.
@@ -116,7 +120,9 @@ def evaluate_feed(
     ok_polls = [p for p in polls if p.ok]
     capture = min(1.0, len(ok_polls) / expected)
 
-    ages = [a for p in ok_polls if (a := p.age_s) is not None]
+    # D-055: an empty snapshot carries no service to be fresh about.
+    live = [p for p in ok_polls if p.entity_count != 0]
+    ages = [a for p in live if (a := p.age_s) is not None]
     p50, p95 = percentile(ages, 0.5), percentile(ages, 0.95)
     times = [p.fetched_at for p in ok_polls]
     gaps = [(b - a).total_seconds() for a, b in itertools.pairwise(times)]
@@ -166,7 +172,7 @@ def evaluate_feed(
         else:
             upstream_note = f"{note}; within D-037 allowance"
     if feed.is_realtime and ok_polls:
-        if not ages:
+        if not ages and live:
             failures.append("freshness unknown: no feed timestamps")
         bad = sum(
             1 for p in ok_polls if (p.error or "").startswith("decode_error")
