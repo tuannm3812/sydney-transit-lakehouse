@@ -10,6 +10,8 @@ sidebar_position: 3
     'Bus': '#00B5EF', 'Trains': '#F6891F', 'Metro': '#00959A',
     'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7', 'Coaches': '#B9C0C7'
   };
+  // OpenStreetMap's own tiles need no key (CARTO's asked for one).
+  const osmTiles = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 </script>
 
 Vehicles on the same route and direction that arrive in clumps instead of evenly spaced. A gap between two consecutive vehicles at a stop is **bunched** when it is under a third of the timetabled gap between the same two trips. A **bunch** is a pair that stays bunched for three or more stops.
@@ -55,7 +57,7 @@ having sum(headways) >= 10 and sum(bunched) >= 3
   startingLat={-33.87}
   startingLong={151.1}
   startingZoom={10}
-  basemap="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  basemap={osmTiles}
   attribution="© OpenStreetMap contributors"
   height={520}
   title="Where gaps are bunched"

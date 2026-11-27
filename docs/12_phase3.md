@@ -14,7 +14,7 @@ python -m transit_lakehouse.gold build                      # adds the Phase 3 m
 python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
 python -m transit_lakehouse.gold publish                    # dashboard extract
 python -m transit_lakehouse.gold replay --day 2026-11-24 \
-    --out dashboard/static/replay-map-map/data
+    --out dashboard/static/replay-map/data
 cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.md
 ```
 
@@ -27,7 +27,7 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 | Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045); overtakes count, pair in timetable order (D-051) |
 | Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable; the map shows stop-hours with 3 or more gaps, the by-hour chart every gap (`bunching_by_hour`, D-051) |
 | Hand-check sheet | `gold handcheck` | sampled ghost trip | raw snapshots searched for the trip id; evidence and an automatic reading; a person writes the verdict |
-| Map replay | `gold replay`, `dashboard/static/replay-map-map/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
+| Map replay | `gold replay`, `dashboard/static/replay-map/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
 | Dashboard | `gold publish`, `dashboard/` | page | Evidence, static, read-only; reads only the public Parquet extract |
 
 ## The hand-check
