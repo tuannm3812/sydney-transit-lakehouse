@@ -81,6 +81,13 @@ MASS_REMOVAL_SHARE = 0.5
 MASS_REMOVAL_MIN_TRIPS = 50
 OPERATOR_DROP_MIN_TRIPS = 20
 GOOD_STATUSES = {"pass", "success"}
+# Bars measured from vehicle positions: expected for modes with that feed.
+VP_MODELS = {"dq_position_plausibility"}
+# Known gaps that warn instead of failing when a mode has no row.
+BAR_EXEMPT = {
+    ("dq_stop_arrival", "lightrail"): "no light rail arrivals yet (O-04)",
+    ("dq_arrival_position", "lightrail"): "no light rail arrivals yet (O-04)",
+}
 
 PASS, FAIL, WARN = "pass", "fail", "warn"
 
@@ -179,16 +186,21 @@ def service_days(
     ]
 
 
-def trip_update_modes(con: duckdb.DuckDBPyConnection) -> list[str]:
-    """Modes with a trip-update feed anywhere in the lakehouse."""
+def feed_modes(con: duckdb.DuckDBPyConnection, kind: str) -> list[str]:
+    """Modes with a feed of this kind anywhere in the lakehouse."""
     return [
         m
         for (m,) in _rows(
             con,
             "select distinct mode from bronze.snapshot"
-            " where kind = 'trip_updates' and mode is not null order by 1",
+            " where kind = ? and mode is not null order by 1",
+            (kind,),
         )
     ]
+
+
+def trip_update_modes(con: duckdb.DuckDBPyConnection) -> list[str]:
+    return feed_modes(con, "trip_updates")
 
 
 # --- checks --------------------------------------------------------------
@@ -203,14 +215,21 @@ def check_build(
     """The latest build covering the day, after its data was complete."""
     if not _relation_exists(con, DQ_TABLE):
         return [Check("build", None, FAIL, detail="no dq_results table")]
+    # Only a full build counts: a later `gold build --select` run holds
+    # a few nodes and must not hide a failed full build.
+    models = sorted(model_names())
+    marks = ", ".join("?" for _ in models)
     run = _rows(
         con,
-        f"select run_id, run_at from {DQ_TABLE}"
+        f"select run_id, min(run_at) as run_at from {DQ_TABLE}"
         " where (service_date_from is null or service_date_from <= ?)"
         " and (service_date_to is null or service_date_to >= ?)"
         " and run_at >= ?"
+        " group by run_id"
+        " having count(distinct node) filter ("
+        f"resource_type = 'model' and node in ({marks})) = ?"
         " order by run_at desc limit 1",
-        (day, day, complete_at),
+        (day, day, complete_at, *models, len(models)),
     )
     if not run:
         return [
@@ -218,7 +237,7 @@ def check_build(
                 "build",
                 None,
                 FAIL,
-                detail="no build covering this day after its data closed",
+                detail="no full build covering this day after its data closed",
             )
         ]
     run_id, run_at = run[0]
@@ -249,6 +268,11 @@ def check_build(
     ]
 
 
+def model_names(root: Path = QUALITY_SCHEMA.parents[1]) -> set[str]:
+    """Every dbt model in the package, as dq_results names them."""
+    return {p.stem for p in root.rglob("*.sql")}
+
+
 def _is_share_node(node: str, share_nodes: set[str]) -> bool:
     # dbt names a generic test <test>_<model>_<column>[_<args>...].
     return any(node.startswith(prefix) for prefix in share_nodes)
@@ -260,18 +284,47 @@ def share_node_prefixes(bars: list[Bar]) -> set[str]:
 
 
 def check_bars(
-    con: duckdb.DuckDBPyConnection, day: date, bars: list[Bar]
+    con: duckdb.DuckDBPyConnection,
+    day: date,
+    bars: list[Bar],
+    modes: list[str],
 ) -> list[Check]:
+    """Each bar for each mode; a missing row or a null share fails."""
+    vp_modes = set(feed_modes(con, "vehicle_positions"))
     out = []
     for bar in bars:
         col = DAY_COLUMN.get(bar.model, "service_date")
-        rows = _rows(
-            con,
-            f"select mode, {bar.column} from gold.{bar.model}"
-            f" where {col} = ? and {bar.column} is not null order by mode",
-            (day,),
+        rows = dict(
+            _rows(
+                con,
+                f"select mode, {bar.column} from gold.{bar.model}"
+                f" where {col} = ? order by mode",
+                (day,),
+            )
         )
-        for mode, value in rows:
+        expected = (
+            [m for m in modes if m in vp_modes]
+            if bar.model in VP_MODELS
+            else modes
+        )
+        name = f"bar:{bar.model}.{bar.column}"
+        for mode in expected:
+            value = rows.get(mode)
+            if value is not None:
+                continue
+            exempt = (bar.model, mode) in BAR_EXEMPT
+            out.append(
+                Check(
+                    name,
+                    mode,
+                    WARN if exempt else FAIL,
+                    bar=bar.threshold,
+                    detail=BAR_EXEMPT.get((bar.model, mode), "no value"),
+                )
+            )
+        for mode, value in rows.items():
+            if value is None:
+                continue
             out.append(
                 Check(
                     f"bar:{bar.model}.{bar.column}",
@@ -507,6 +560,8 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
                     as prev_entities
             from bronze.snapshot
             where kind = 'trip_updates'
+                and (decode_error is null
+                    or decode_error like 'partial_decode%')
         )
         select r.mode,
             max(r.removed / s.prev_entities) as worst,
@@ -552,7 +607,7 @@ def judge_day(
         *check_build(con, day, complete_at, share_node_prefixes(bars)),
         *check_modes(con, day, modes),
         *check_capture(con, day),
-        *check_bars(con, day, bars),
+        *check_bars(con, day, bars, modes),
         *check_operators(con, day),
         *check_trip_left(con, day),
     ]
@@ -564,16 +619,21 @@ def judge_day(
 
 def streak(days: list[Day]) -> tuple[date | None, int]:
     """The current run of green days: (first day, length)."""
-    start, n = None, 0
+    # The newest days may still be open; they neither count nor break.
+    while days and days[-1].status == "open":
+        days = days[:-1]
+    start, n, prev = None, 0, None
     for d in days:
-        if d.status == "open":
-            continue
+        gap = prev is not None and d.service_date != prev + timedelta(days=1)
+        prev = d.service_date
+        if d.status != "green" or gap:
+            # A red day, an open day or a day missing from gold breaks
+            # the run; a green day after a gap starts a new one.
+            start, n = None, 0
         if d.status == "green":
             if n == 0:
                 start = d.service_date
             n += 1
-        else:
-            start, n = None, 0
     return start, n
 
 

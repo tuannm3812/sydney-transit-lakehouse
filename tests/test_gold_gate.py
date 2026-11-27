@@ -21,6 +21,10 @@ from transit_lakehouse.reports.render import parse
 
 D1, D2 = date(2026, 11, 25), date(2026, 11, 26)
 MODES = ("bus", "ferry")
+SNAP_INSERT = (
+    "insert into bronze.snapshot (feed, mode, kind, fetched_at, entities)"
+    " values"
+)
 
 
 def _origin(day: date) -> datetime:
@@ -61,7 +65,8 @@ def make_db(path: Path, days: tuple[date, ...] = (D1, D2)) -> Path:
         """
         create table bronze.snapshot (
             feed varchar, mode varchar, kind varchar,
-            fetched_at timestamptz, entities integer)
+            fetched_at timestamptz, entities integer,
+            decode_error varchar default null)
         """
     )
     con.execute(
@@ -112,13 +117,11 @@ def make_db(path: Path, days: tuple[date, ...] = (D1, D2)) -> Path:
                         [mode, feed, trip, day, left],
                     )
                     con.execute(
-                        "insert into bronze.snapshot values"
-                        " (?, ?, 'trip_updates', ?, 30)",
+                        SNAP_INSERT + " (?, ?, 'trip_updates', ?, 30)",
                         [feed, mode, left - timedelta(seconds=30)],
                     )
                     con.execute(
-                        "insert into bronze.snapshot values"
-                        " (?, ?, 'trip_updates', ?, 29)",
+                        SNAP_INSERT + " (?, ?, 'trip_updates', ?, 29)",
                         [feed, mode, left],
                     )
     remart(con)
@@ -162,8 +165,9 @@ def make_db(path: Path, days: tuple[date, ...] = (D1, D2)) -> Path:
         """
     )
     run_at = last + timedelta(hours=1)
+    models = [(m, "model", "success") for m in sorted(gate.model_names())]
     for node, kind, status in [
-        ("model.transit_gold.fct_trip_outcome", "model", "success"),
+        *models,
         ("not_null_fct_stop_arrival_sched_arrival_utc.ab12", "test", "pass"),
         (
             "share_at_least_dq_trip_match_match_share__0_95.cd34",
@@ -324,6 +328,112 @@ def test_mode_option_leaves_other_modes_out(db: Path) -> None:
     assert modes == {None, "bus"}
 
 
+def test_a_day_missing_from_gold_breaks_the_run(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "transit.duckdb", (D1, D2 + timedelta(days=1)))
+    res = run(db)
+    assert [d["status"] for d in res["days"]] == ["green", "green"]
+    assert res["streak_days"] == 1 and res["streak_start"] == "2026-11-27"
+
+
+def test_a_missing_bar_row_fails_and_light_rail_warns(db: Path) -> None:
+    sql(
+        db,
+        "delete from gold.dq_arrival_position"
+        " where service_date = '2026-11-26' and mode = 'ferry'",
+        "update gold.dq_stop_arrival set delay_sane_share = null"
+        " where service_date = '2026-11-25' and mode = 'bus'",
+    )
+    assert failed(run(db)) == {
+        ("2026-11-26", "bar:dq_arrival_position.within_150m_share", "ferry"),
+        ("2026-11-25", "bar:dq_stop_arrival.delay_sane_share", "bus"),
+    }
+    sql(
+        db,
+        "update gold.fct_trip_outcome set mode = 'lightrail'"
+        " where mode = 'ferry'",
+        "update staging.stg_rt_trip_state set mode = 'lightrail'"
+        " where mode = 'ferry'",
+        "update bronze.snapshot set mode = 'lightrail' where mode = 'ferry'",
+        "update gold.dq_trip_match set mode = 'lightrail'"
+        " where mode = 'ferry'",
+        "delete from gold.dq_arrival_position where mode = 'ferry'",
+    )
+    with duckdb.connect(str(db)) as con:
+        remart(con)
+    res = run(db)
+    warns = {
+        (c["check"], c["mode"])
+        for d in res["days"]
+        for c in d["checks"]
+        if c["status"] == "warn"
+    }
+    # No light rail arrivals yet (O-04): every arrival bar warns.
+    assert warns == {
+        ("bar:dq_arrival_position.within_150m_share", "lightrail"),
+        ("bar:dq_stop_arrival.delay_sane_share", "lightrail"),
+        ("bar:dq_stop_arrival.schedule_agree_share", "lightrail"),
+        ("bar:dq_stop_arrival.before_exit_share", "lightrail"),
+    }
+    assert failed(res) == {
+        ("2026-11-25", "bar:dq_stop_arrival.delay_sane_share", "bus")
+    }
+
+
+def test_plausibility_is_expected_where_positions_land(db: Path) -> None:
+    sql(
+        db,
+        "insert into bronze.snapshot (feed, mode, kind, fetched_at, entities)"
+        " values ('bus_vehiclepos', 'bus', 'vehicle_positions',"
+        " timestamptz '2026-11-25 01:00:00+00', 10)",
+        "delete from gold.dq_position_plausibility where mode = 'bus'"
+        " and obs_date = '2026-11-26'",
+    )
+    assert failed(run(db)) == {
+        ("2026-11-26", "bar:dq_position_plausibility.plausible_share", "bus")
+    }
+
+
+def test_a_partial_select_run_does_not_hide_a_failed_build(db: Path) -> None:
+    sql(
+        db,
+        "update gold.dq_results set status = 'error'"
+        " where node = 'fct_trip_outcome'",
+        "insert into gold.dq_results values ('run-2',"
+        " timestamptz '2026-11-28 00:00:00+00', null, null,"
+        " 'fct_trip_outcome', 'model', 'success', 0, null, 1.0)",
+    )
+    res = run(db)
+    assert ("2026-11-25", "build", None) in failed(res)
+    build = next(c for c in res["days"][0]["checks"] if c["check"] == "build")
+    assert "run run-1" in build["detail"]
+
+
+def test_burst_check_skips_unreadable_files(db: Path) -> None:
+    # D-049: the worker keeps the last readable snapshot as its baseline,
+    # so an unreadable file (0 entities) must not be the one compared.
+    t = datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
+    with duckdb.connect(str(db)) as con:
+        for i, (n, err) in enumerate([(200, None), (0, "decode_error")]):
+            con.execute(
+                "insert into bronze.snapshot values"
+                " ('bus_tripupdates', 'bus', 'trip_updates', ?, ?, ?)",
+                [t + timedelta(seconds=30 * i), n, err],
+            )
+        con.execute(
+            "insert into bronze.snapshot values"
+            " ('bus_tripupdates', 'bus', 'trip_updates', ?, 0, null)",
+            [t + timedelta(seconds=60)],
+        )
+        for i in range(150):
+            con.execute(
+                "insert into staging.stg_rt_trip_state values"
+                " ('bus', 'bus_tripupdates', ?, '2026-11-25',"
+                " 'REMOVED', 0, ?)",
+                [f"x{i}", t + timedelta(seconds=60)],
+            )
+    assert failed(run(db)) == {("2026-11-25", "trip_left:burst", "bus")}
+
+
 def test_a_capture_gap_fails_the_capture_check(db: Path) -> None:
     sql(
         db,
@@ -436,13 +546,12 @@ def test_one_snapshot_ending_most_trips_fails(db: Path) -> None:
     t = datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
     with duckdb.connect(str(db)) as con:
         con.execute(
-            "insert into bronze.snapshot values"
-            " ('bus_tripupdates', 'bus', 'trip_updates', ?, 200)",
+            SNAP_INSERT
+            + " ('bus_tripupdates', 'bus', 'trip_updates', ?, 200)",
             [t],
         )
         con.execute(
-            "insert into bronze.snapshot values"
-            " ('bus_tripupdates', 'bus', 'trip_updates', ?, 0)",
+            SNAP_INSERT + " ('bus_tripupdates', 'bus', 'trip_updates', ?, 0)",
             [t + timedelta(seconds=30)],
         )
         for i in range(150):
@@ -492,6 +601,18 @@ def test_gate_report_follows_the_report_standard(db: Path) -> None:
     passing = json.loads(json.dumps(run(db, days_needed=1), default=str))
     rep = parse(gate_report.build(passing, "abc1234", "2026-12-09", "CI"))
     assert rep.meta["verdict"] == "Pass"
+
+    # A mode with no covered operator shows as Fail in section 3.4.
+    sql(
+        db,
+        "update gold.fct_trip_outcome set operator_covered = false,"
+        " outcome = 'not_judged' where mode = 'ferry'",
+    )
+    with duckdb.connect(str(db)) as con:
+        remart(con)
+    res = json.loads(json.dumps(run(db), default=str))
+    text = gate_report.build(res, "abc1234", "2026-12-09", "CI")
+    assert "| Ferries | 0 of 2 | 0 | 0 | 0 | Fail |" in text
 
 
 def test_gate_on_a_real_dbt_build(gold_db: Path) -> None:  # noqa: F811

@@ -102,19 +102,26 @@ def _closed(days: list[dict]) -> list[dict]:
 
 def _bar_rows(days: list[dict]) -> list[str]:
     low: dict[tuple[str, str], tuple[float, str, float]] = {}
+    failed: set[tuple[str, str]] = set()
     for d in _closed(days):
         for c in d["checks"]:
-            if not c["check"].startswith("bar:") or c["value"] is None:
+            if not c["check"].startswith("bar:"):
                 continue
             key = (c["check"], c["mode"])
+            if c["status"] == "fail":
+                failed.add(key)
+            if c["value"] is None:
+                continue
             if key not in low or c["value"] < low[key][0]:
                 low[key] = (c["value"], d["service_date"], c["bar"])
     rows = []
-    for (check, mode), (value, day, bar) in sorted(low.items()):
+    for check, mode in sorted(set(low) | failed):
+        value, day, bar = low.get((check, mode), (None, None, None))
+        needs = "–" if bar is None else f"{bar:.0%}"
         rows.append(
-            f"| {check_name(check)} | {mode_name(mode)} | {bar:.0%} "
-            f"| {_pct(value)} | {_d(day)} "
-            f"| {'Pass' if value >= bar else 'Fail'} |"
+            f"| {check_name(check)} | {mode_name(mode)} | {needs} "
+            f"| {_pct(value)} | {_d(day) if day else '–'} "
+            f"| {'Fail' if (check, mode) in failed else 'Pass'} |"
         )
     return rows
 
@@ -143,6 +150,7 @@ def _capture_rows(days: list[dict]) -> list[str]:
 
 def _operator_rows(days: list[dict]) -> list[str]:
     rule = _by_mode(days, "operators:rule")
+    covered_fails = _by_mode(days, "operators:covered")
     mart = _by_mode(days, "operators:mart")
     dropped = _by_mode(days, "operators:dropped")
     rows = []
@@ -154,6 +162,7 @@ def _operator_rows(days: list[dict]) -> list[str]:
             broken
             or mart_fails
             or any(c["status"] == "fail" for c in rule[mode])
+            or any(c["status"] == "fail" for c in covered_fails.get(mode, []))
         )
         rows.append(
             f"| {mode_name(mode)} | {covered[-1]} | {broken:,} "
