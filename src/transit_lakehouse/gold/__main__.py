@@ -9,6 +9,11 @@
     python -m transit_lakehouse.gold publish           # dashboard extract
     python -m transit_lakehouse.gold replay --day 2026-11-24 \\
         --out dashboard/static/replay/data
+    python -m transit_lakehouse.gold gate --since 2026-11-29 \\
+        --json docs/reports/gold-gate.json   # Phase 2 gate (D-057)
+    python -m transit_lakehouse.gold gate-report \\
+        --gate-json docs/reports/gold-gate.json --commit abc1234 \\
+        --out docs/reports/phase2-gate-20261209.md
 
 Reads the lakehouse under ``DATA_DIR`` (as the worker writes it) and
 writes ``DATA_DIR/gold/transit.duckdb``. dbt's target and logs go under
@@ -28,7 +33,14 @@ from pathlib import Path
 
 import duckdb
 
-from transit_lakehouse.gold import dq, handcheck, publish, replay
+from transit_lakehouse.gold import (
+    dq,
+    gate,
+    gate_report,
+    handcheck,
+    publish,
+    replay,
+)
 from transit_lakehouse.gold.views import refresh_views
 from transit_lakehouse.worker.tables import open_catalog
 
@@ -175,6 +187,27 @@ def run_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_gate(args: argparse.Namespace) -> int:
+    """Phase 2 gate: 7 green service days in a row (D-039, D-057)."""
+    db = gold_paths(args.data_dir)["db"]
+    if not db.exists():
+        print("no gold database yet")
+        return 2
+    with duckdb.connect(str(db), read_only=True) as con:
+        result = gate.run_gate(
+            con,
+            since=args.since,
+            until=args.until,
+            days_needed=args.days,
+            grace_minutes=args.grace_minutes,
+            modes=args.mode or None,
+        )
+    if args.json:
+        gate.write_json(result, args.json)
+    print(gate.summary(result))
+    return 0 if result["passed"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="transit_lakehouse.gold")
     parser.add_argument(
@@ -213,6 +246,24 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--step", type=int, default=30, help="seconds")
     r.add_argument("--mode", action="append", help="repeat; default all")
+    g = sub.add_parser("gate", help="Phase 2 gate: green days in a row")
+    g.add_argument(
+        "--since",
+        type=date.fromisoformat,
+        help="first service day of the clock (the worker go-live, D-039)",
+    )
+    g.add_argument("--until", type=date.fromisoformat)
+    g.add_argument("--days", type=int, default=gate.GATE_DAYS)
+    g.add_argument(
+        "--grace-minutes",
+        type=int,
+        default=180,
+        help="as the build's outcome_grace_minutes",
+    )
+    g.add_argument("--mode", action="append", help="repeat; default all")
+    g.add_argument("--json", type=Path, help="write the result here")
+    gr = sub.add_parser("gate-report", help="draft the R2-02 gate report")
+    gate_report.add_arguments(gr)
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -231,6 +282,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_publish(args)
     if args.cmd == "replay":
         return run_replay(args)
+    if args.cmd == "gate":
+        return run_gate(args)
+    if args.cmd == "gate-report":
+        return gate_report.run(args)
     return build(args.data_dir, args.since, json.loads(args.vars), args.select)
 
 

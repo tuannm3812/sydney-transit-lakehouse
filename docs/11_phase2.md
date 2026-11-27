@@ -19,6 +19,32 @@ It reads the lakehouse under `DATA_DIR` as the worker writes it and writes `DATA
 
 The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the Docker image carries it.
 
+## Gate check
+
+The gate is the quality page green for 7 straight service days, counted from the worker go-live once the first full day of every mode is green (D-039). `gold gate` decides "green" per Sydney service day from the gold database alone, read-only (D-057):
+
+```bash
+python -m transit_lakehouse.gold gate --since 2026-11-29 --json docs/reports/gold-gate.json
+python -m transit_lakehouse.gold gate-report --gate-json docs/reports/gold-gate.json \
+    --commit <sha> --out docs/reports/phase2-gate-<yyyymmdd>.md
+```
+
+It exits 0 only when the last green run reaches `--days` (7). On the host: `docker compose --profile gold run --rm gold gate ...`, after the nightly build and never during it.
+
+| Check | Green when | Decision |
+|---|---|---|
+| `build` | a build covering the day, run after its data closed, has every model and structural test passing | D-035 |
+| `bar:<model>.<column>` | each `share_at_least` bar in `models/quality/schema.yml` holds on the day's row, per mode | D-035 |
+| `modes` | every mode with a trip-update feed has realtime trips | D-039 |
+| `capture` | at least 95% of each mode's scheduled trips are judged on capture | D-048 |
+| `operators:rule`, `operators:covered`, `operators:mart` | no uncovered operator's trip is `never_seen` or `partial`; each mode has a covered operator; the route mart agrees with the outcomes | D-038 |
+| `operators:dropped` | warning only: an operator covered the day before is not covered this day | D-038 |
+| `trip_left:rows`, `trip_left:share`, `trip_left:burst` | `REMOVED` rows exist with stop count 0; at least 90% of trips seen to run left the feed; no snapshot ended over half the trips | D-036, D-049 |
+
+A day is `open` until trip updates were captured past its last trip's end plus the grace, so the newest day never counts early. The draft report fills R2-02's tables from the JSON; Findings are written by hand before it is set to Final, as for R0-02.
+
+**Rehearsal, 27 Nov (cloud, raw hours 24 Nov 12:00 to 26 Nov 23:00 UTC replayed from object storage, gold built unwindowed).** 41 of 43 dbt nodes passed; the two failures were share tests on the partial edge days 24 and 27 Nov, which the gate judges per day and so leaves out of 25 and 26 Nov. Every day was red on one thing: **trains have no realtime trip state** (379,784 train `trip_status` rows, none with a `start_date`, so `stg_rt_trip_state` drops them and no train operator is covered). With trains left out (`--mode bus --mode metro --mode lightrail --mode ferry`), 26 Nov is green on all 53 checks (4 warnings: light rail has no arrival rows yet, O-04) and 25 Nov is red only on metro capture (394 of 433 trips, 91.0%): the metro trip-update files have gaps of 150 to 210 s between 14:04 and 14:36 UTC (about 1 am Sydney), over the 120 s coverage limit. Trip left the feed: 100% of trips seen to run left it on both days, and no snapshot ended more than 3.5% of the bus trips.
+
 ## Models
 
 | Layer | Model | One row per | Notes |
@@ -52,6 +78,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
 | 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
 | 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
+| 14 | **Gate check** (`gold gate`, D-057) and the R2-02 draft (`gold gate-report`) | built; rehearsed on 25 and 26 Nov replayed from S3 (below) | the worker live, then 7 green days |
 
 ## Open risks
 
