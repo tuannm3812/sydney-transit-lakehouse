@@ -14,7 +14,7 @@ python -m transit_lakehouse.gold build                      # adds the Phase 3 m
 python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
 python -m transit_lakehouse.gold publish                    # dashboard extract
 python -m transit_lakehouse.gold replay --day 2026-11-24 \
-    --out dashboard/static/replay/data
+    --out dashboard/static/replay-map/data
 cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.md
 ```
 
@@ -27,7 +27,7 @@ cd dashboard && npm ci && npm run sources && npm run build  # dashboard/README.m
 | Bunching radar: bunches | `fct_bunching_event` | pair of consecutive vehicles bunched at 3 or more stops | `bunch_min_stops` (D-045); overtakes count, pair in timetable order (D-051) |
 | Bunching radar: hot spots | `mart_bunching_hotspot` | route x direction x stop x day type x local hour | stop name and position from the day's timetable; the map shows stop-hours with 3 or more gaps, the by-hour chart every gap (`bunching_by_hour`, D-051) |
 | Hand-check sheet | `gold handcheck` | sampled ghost trip | raw snapshots searched for the trip id; evidence and an automatic reading; a person writes the verdict |
-| Map replay | `gold replay`, `dashboard/static/replay/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
+| Map replay | `gold replay`, `dashboard/static/replay-map/` | Sydney hour | positions every 30 s per vehicle and trip; bunched pairs drawn larger |
 | Dashboard | `gold publish`, `dashboard/` | page | Evidence, static, read-only; reads only the public Parquet extract |
 
 ## The hand-check
@@ -59,5 +59,5 @@ The automatic reading is one of `pipeline_miss`, `raw_incomplete`, `start_date_m
 
 - **Two days are not a pattern.** Ghost shares and hot spots need weeks to rank routes fairly; the dashboard shows how many trips and gaps each figure rests on.
 - **Realtime route ids differ from the timetable's for buses** (Phase 2 finding), so every product joins on `trip_id` and `start_date` and takes route names from the timetable.
-- **Basemap tiles** come from CARTO's free basemaps, which ask for attribution and allow modest traffic. A busy public site may need its own tiles.
+- **Basemap tiles** come from OpenStreetMap's own tile servers, which need attribution and allow only light use (CARTO's free tiles answered "API KEY REQUIRED" on a local build, 27 Nov). A busy public site needs a tile provider or its own tiles.
 - **The replay files are large.** A full day of every mode at 30 s is tens of MB; the viewer loads one hour at a time, and the step can be raised.

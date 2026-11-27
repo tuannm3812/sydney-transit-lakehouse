@@ -18,6 +18,7 @@ pages only filter and aggregate them.
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -101,11 +102,38 @@ TABLES: dict[str, str] = {
 }
 
 
-def publish(con: duckdb.DuckDBPyConnection, out: Path) -> dict[str, int]:
-    """Write every public table; returns rows per table."""
+# Tables with one row per service day or finer; ``date_from`` and
+# ``date_to`` keep only those days. The bunching hot spots and the
+# by-hour chart sum every day built, so a build for the site should
+# already end on the last complete day (``service_date_to``).
+DATED = {
+    "service_days",
+    "route_honesty",
+    "ghost_trips",
+    "route_hour",
+    "bunching_events",
+    "trip_match",
+}
+
+
+def publish(
+    con: duckdb.DuckDBPyConnection,
+    out: Path,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict[str, int]:
+    """Write every public table; returns rows per table.
+
+    ``date_from`` and ``date_to`` (inclusive Sydney service days) drop
+    the partly captured days at the edges of a build from the dated
+    tables, so the site never reports a half-collected day.
+    """
     out.mkdir(parents=True, exist_ok=True)
     rows = {}
     for name, sql in TABLES.items():
+        if name in DATED and (date_from or date_to):
+            window = _window(date_from, date_to)
+            sql = f"select * from ({sql}) where true{window}"
         path = out / f"{name}.parquet"
         tmp = path.with_suffix(".parquet.tmp")
         con.execute(f"copy ({sql}) to {_lit(tmp)} (format parquet)")
@@ -115,6 +143,15 @@ def publish(con: duckdb.DuckDBPyConnection, out: Path) -> dict[str, int]:
         ).fetchall()
         rows[name] = n
     return rows
+
+
+def _window(date_from: date | None, date_to: date | None) -> str:
+    out = ""
+    if date_from:
+        out += f" and service_date >= date '{date_from.isoformat()}'"
+    if date_to:
+        out += f" and service_date <= date '{date_to.isoformat()}'"
+    return out
 
 
 def _lit(path: Path) -> str:

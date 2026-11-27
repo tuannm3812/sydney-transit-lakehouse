@@ -1,5 +1,5 @@
 node_modules/
 .evidence/
 build/
-static/replay/data/
-static/replay/vendor/
+static/replay-map/data/
+static/replay-map/vendor/

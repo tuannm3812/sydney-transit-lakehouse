@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map replay</title>
 <!-- Map replay (Phase 3, D-045). Data: `python -m transit_lakehouse.gold
-     replay --out dashboard/static/replay/data`, one JSON per Sydney hour. -->
-<link rel="stylesheet" href="vendor/maplibre-gl.css">
-<script src="vendor/maplibre-gl.js"></script>
-<script src="vendor/deck.gl.min.js"></script>
+     replay --out dashboard/static/replay-map/data`, one JSON per Sydney hour. -->
+<link rel="stylesheet" href="/replay-map/vendor/maplibre-gl.css">
+<script src="/replay-map/vendor/maplibre-gl.js"></script>
+<script src="/replay-map/vendor/deck.gl.min.js"></script>
 <style>
   :root {
     --bg: #ffffff; --ink: #1b2430; --muted: #5a6370; --line: #d8dee3;
@@ -23,7 +23,8 @@
   #map { position: absolute; inset: 0; }
   .panel { position: absolute; left: 12px; right: 12px; bottom: 12px;
     background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+    border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px;
+    z-index: 2; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   select, button { font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
@@ -65,12 +66,16 @@
 <script>
 // TfNSW mode colours, as on the dashboard and the decks.
 const MODES = {
-  bus: [0, 181, 239], train: [246, 137, 31], metro: [22, 131, 136],
-  lightrail: [238, 52, 63], ferry: [90, 176, 49], coach: [116, 34, 130]
+  bus: [0, 181, 239], train: [246, 137, 31], metro: [0, 149, 154],
+  lightrail: [238, 52, 63], ferry: [90, 176, 49],
+  nswtrains: [185, 192, 199], coach: [185, 192, 199]
 };
-const NAMES = { bus: 'Buses', train: 'Trains', metro: 'Metro',
-  lightrail: 'Light rail', ferry: 'Ferries', coach: 'Coaches' };
-const DATA = 'data/';
+const NAMES = { bus: 'Bus', train: 'Trains', metro: 'Metro',
+  lightrail: 'Light rail', ferry: 'Ferries', nswtrains: 'NSW TrainLink',
+  coach: 'Coaches' };
+// Absolute, so the player works whether or not the host keeps the
+// trailing slash (the site is served from the domain root).
+const DATA = '/replay-map/data/';
 const $ = (id) => document.getElementById(id);
 let index = null, hour = null, tracks = [], bunches = [], t = 0;
 let playing = false, last = null;
@@ -80,13 +85,21 @@ const map = new maplibregl.Map({
   style: {
     version: 8,
     sources: { base: { type: 'raster', tileSize: 256,
-      tiles: ['a', 'b', 'c', 'd'].map(
-        (s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`),
-      attribution: '© OpenStreetMap contributors © CARTO' } },
-    layers: [{ id: 'base', type: 'raster', source: 'base' }]
+      // OpenStreetMap's own tiles need no key; CARTO's answered
+      // "API KEY REQUIRED" from a local build (27 Nov 2026).
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      maxzoom: 19,
+      attribution: '© OpenStreetMap contributors' } },
+    layers: [{ id: 'base', type: 'raster', source: 'base',
+      paint: { 'raster-saturation': -0.8, 'raster-opacity': 0.85 } }]
   },
-  center: [151.1, -33.87], zoom: 10.5
+  center: [151.1, -33.87], zoom: 10.5,
+  // The control panel covers the bottom edge, so the OpenStreetMap
+  // credit (required) goes top-left.
+  attributionControl: false
 });
+map.addControl(new maplibregl.AttributionControl({ compact: false }),
+  'top-left');
 const overlay = new deck.MapboxOverlay({ layers: [] });
 map.addControl(overlay);
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -203,6 +216,8 @@ async function loadDay(day) {
 async function start() {
   const legend = $('legend');
   for (const [m, c] of Object.entries(MODES)) {
+    // Modes not collected yet share the grey; leave them off the key.
+    if (m === 'nswtrains' || m === 'coach') continue;
     const s = document.createElement('span');
     s.style.setProperty('--c', `rgb(${c.join(',')})`);
     s.textContent = NAMES[m]; legend.appendChild(s);

@@ -1,6 +1,25 @@
 deployment:
   basePath: ""
 
+# Charts use Viridis (the decks and the poster do too). Series that are
+# transport modes override it with TfNSW's mode colours: each source
+# query adds mode_name, and the pages pass seriesColors keyed on it.
+appearance:
+  default: light
+  switcher: true
+
+theme:
+  colorPalettes:
+    default:
+      light: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725",
+              "#482878", "#31688e", "#35b779"]
+      dark: ["#fde725", "#5ec962", "#21918c", "#3b528b", "#b5de2b",
+             "#6ece58", "#26828e", "#482878"]
+  colorScales:
+    default:
+      light: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"]
+      dark: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"]
+
 plugins:
   components:
     "@evidence-dev/core-components": {}

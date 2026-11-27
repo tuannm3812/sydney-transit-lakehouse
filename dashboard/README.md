@@ -10,7 +10,9 @@ Only the public extract, never the gold database or silver:
 |---|---|---|
 | Gold build | `python -m transit_lakehouse.gold build` | `data/gold/transit.duckdb` |
 | Public extract | `python -m transit_lakehouse.gold publish` | `data/gold/public/*.parquet`, the tables listed in `transit_lakehouse/gold/publish.py` |
-| Map replay | `python -m transit_lakehouse.gold replay --day <Sydney date> --out dashboard/static/replay/data` | one JSON per local hour and the day's bunches |
+
+A build for the site covers complete service days only. The first and last days of a run are partly captured, so build gold ending on the last complete day and publish only the complete days, for example `gold build --vars '{"service_date_from": "2026-11-21", "service_date_to": "2026-11-23"}'` (a day early at the start, incident I-21) then `gold publish --from 2026-11-22 --to 2026-11-23`. The hot spots and the by-hour chart sum every day in the build, so they keep the first day's few late trips.
+| Map replay | `python -m transit_lakehouse.gold replay --day <Sydney date> --out dashboard/static/replay-map/data` | one JSON per local hour and the day's bunches |
 
 The extract is Parquet because Evidence bundles an older DuckDB than the Python package and cannot open the gold file (D-045).
 
@@ -34,10 +36,15 @@ CI builds the site against the synthetic route in `tests/test_gold_products.py` 
 
 | Page | Shows | From |
 |---|---|---|
-| `/` | trips checked, share that ran, never seen and vanished, by day and mode | `service_days`, `route_honesty`, `bunching_events` |
+| `/` | trips checked, share that ran, never seen and vanished, by mode and service day | `service_days`, `route_honesty`, `bunching_events` |
 | `/ghosts` | ghost trips by hour, route and operator, and every ghost trip | `ghost_trips`, `route_honesty` |
 | `/bunching` | hot-spot map, bunched share by hour, routes that bunch most, every bunch | `bunching_hotspots`, `bunching_by_hour`, `bunching_events` |
-| `/replay` | the map replay (`static/replay/index.html`, deck.gl on MapLibre) | replay JSON |
+| `/replay` | the map replay (`static/replay-map/index.html`, deck.gl on MapLibre) | replay JSON |
 | `/quality` | the last build's checks and trip match by mode | `quality`, `trip_match` |
+| `/about` | the data, its licence, the method and its limits | `service_days`, `quality` |
+
+## Colours
+
+Charts use Viridis, set as the default palette and colour scale in `evidence.config.yaml`. A series that is a transport mode uses TfNSW's mode colours instead (Bus `#00B5EF`, Trains `#F6891F`, Metro `#00959A`, Light rail `#EE343F`, Ferries `#5AB031`), the same values as the decks and the poster. Each source query in `sources/transit/` adds `mode_name`, the public name the colours are keyed on.
 
 Wording follows docs/7_data_model.md: "never seen" is a ghost candidate, not proof a trip did not run.
