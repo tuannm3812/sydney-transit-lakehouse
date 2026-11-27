@@ -85,7 +85,7 @@ Built on silver tables replayed from real hour tars; nothing is deployed. Gate: 
 - [x] After-midnight trips: TfNSW dates them by calendar day; gold moves them to their service day (D-035)
 - [x] Record when a trip leaves the feed in silver (Mike, 22 Nov, D-036): 4,716 last-stop arrivals on the real hours
 - [x] Review of the merged gold models (23 Nov): ghost candidates only for operators with realtime that day (D-038); unreadable snapshots no longer count as capture; loop routes paired per call; route mart keeps regions apart
-- [x] Gate check `gold gate` (D-056): each service day judged on its build, quality bars per mode, every mode present, capture, operator coverage (D-038) and trip-left rows (D-036); `gold gate-report` drafts R2-02
+- [x] Gate check `gold gate` (D-057): each service day judged on its build, quality bars per mode, every mode present, capture, operator coverage (D-038) and trip-left rows (D-036); `gold gate-report` drafts R2-02
 - [ ] Excess wait time, incremental nightly builds
 - [ ] **After the worker is live:** a full day of every mode, then the 7-day quality clock (D-039, gate about 9 Dec), the volume test and the public quality page
 

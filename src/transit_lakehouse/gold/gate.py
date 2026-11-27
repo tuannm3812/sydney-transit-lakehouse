@@ -1,4 +1,4 @@
-"""Phase 2 gate check: is the quality page green, day by day (D-056).
+"""Phase 2 gate check: is the quality page green, day by day (D-057).
 
     python -m transit_lakehouse.gold gate --since 2026-11-29 \\
         --json docs/reports/gold-gate.json

@@ -10,7 +10,7 @@
     python -m transit_lakehouse.gold replay --day 2026-11-24 \\
         --out dashboard/static/replay/data
     python -m transit_lakehouse.gold gate --since 2026-11-29 \\
-        --json docs/reports/gold-gate.json   # Phase 2 gate (D-056)
+        --json docs/reports/gold-gate.json   # Phase 2 gate (D-057)
     python -m transit_lakehouse.gold gate-report \\
         --gate-json docs/reports/gold-gate.json --commit abc1234 \\
         --out docs/reports/phase2-gate-20261209.md
@@ -188,7 +188,7 @@ def run_replay(args: argparse.Namespace) -> int:
 
 
 def run_gate(args: argparse.Namespace) -> int:
-    """Phase 2 gate: 7 green service days in a row (D-039, D-056)."""
+    """Phase 2 gate: 7 green service days in a row (D-039, D-057)."""
     db = gold_paths(args.data_dir)["db"]
     if not db.exists():
         print("no gold database yet")

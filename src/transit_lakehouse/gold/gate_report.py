@@ -1,6 +1,6 @@
 """Draft the Phase 2 gate report (R2-02) from ``gold gate`` JSON.
 
-Usage, on the host once the gate check exits 0 (D-039, D-056)::
+Usage, on the host once the gate check exits 0 (D-039, D-057)::
 
     docker compose --profile gold run --rm gold gate --since 2026-11-29 \\
         --json docs/reports/gold-gate.json
@@ -32,7 +32,7 @@ SUBTITLE = (
     "Sydney service days after the worker went live, checked from the "
     "gold database alone."
 )
-DECISIONS = "D-035, D-036, D-038, D-039, D-048, D-056"
+DECISIONS = "D-035, D-036, D-038, D-039, D-048, D-057"
 MODE_NAMES = {
     "bus": "Bus",
     "buses": "Bus",
@@ -292,7 +292,7 @@ def build(
         "The nightly gold build (D-035) reads the silver tables the live "
         "worker writes and records every model and test in "
         "`gold.dq_results`. `gold gate` reads the gold database "
-        "read-only and judges each Sydney service day on its own (D-056).",
+        "read-only and judges each Sydney service day on its own (D-057).",
         "",
         "```flow",
         "silver | Silver tables | written by the live worker",
@@ -310,7 +310,7 @@ def build(
         "trips | D-039 |",
         f"| Trips judged on capture | at least "
         f"{_bar(gate, 'capture', 0.95)} of each mode's scheduled trips "
-        "are covered from start to grace | D-048, D-056 |",
+        "are covered from start to grace | D-048, D-057 |",
         "| Operator coverage | no uncovered operator's trip is "
         "`never_seen` or `partial`, and the route mart agrees | D-038 |",
         "| Trip left the feed | `REMOVED` rows present with stop count 0, "

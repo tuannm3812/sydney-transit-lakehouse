@@ -1,4 +1,4 @@
-"""Phase 2 gate check (D-056) on small hand-made gold databases.
+"""Phase 2 gate check (D-057) on small hand-made gold databases.
 
 Each test starts from two green service days and breaks one thing, so
 it shows the check that catches it. The last tests run the gate on a

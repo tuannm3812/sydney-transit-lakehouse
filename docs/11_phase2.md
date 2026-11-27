@@ -21,7 +21,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 
 ## Gate check
 
-The gate is the quality page green for 7 straight service days, counted from the worker go-live once the first full day of every mode is green (D-039). `gold gate` decides "green" per Sydney service day from the gold database alone, read-only (D-056):
+The gate is the quality page green for 7 straight service days, counted from the worker go-live once the first full day of every mode is green (D-039). `gold gate` decides "green" per Sydney service day from the gold database alone, read-only (D-057):
 
 ```bash
 python -m transit_lakehouse.gold gate --since 2026-11-29 --json docs/reports/gold-gate.json
@@ -76,7 +76,7 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
 | 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
 | 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
-| 14 | **Gate check** (`gold gate`, D-056) and the R2-02 draft (`gold gate-report`) | built; rehearsed on replayed S3 days (see below) | the worker live, then 7 green days |
+| 14 | **Gate check** (`gold gate`, D-057) and the R2-02 draft (`gold gate-report`) | built; rehearsed on replayed S3 days (see below) | the worker live, then 7 green days |
 
 ## Open risks
 
