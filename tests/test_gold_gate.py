@@ -312,6 +312,18 @@ def test_a_missing_mode_fails_the_day(db: Path) -> None:
     assert ("2026-11-25", "modes", "metro") in failed(res)
 
 
+def test_mode_option_leaves_other_modes_out(db: Path) -> None:
+    sql(
+        db,
+        "update gold.dq_trip_match set match_share = 0.5 where mode = 'ferry'",
+    )
+    assert failed(run(db))
+    res = run(db, modes=["bus"])
+    assert failed(res) == set()
+    modes = {c["mode"] for d in res["days"] for c in d["checks"]}
+    assert modes == {None, "bus"}
+
+
 def test_a_capture_gap_fails_the_capture_check(db: Path) -> None:
     sql(
         db,

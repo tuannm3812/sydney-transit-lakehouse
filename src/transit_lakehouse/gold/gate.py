@@ -556,6 +556,8 @@ def judge_day(
         *check_operators(con, day),
         *check_trip_left(con, day),
     ]
+    # Only the modes asked for: --mode leaves the others out entirely.
+    checks = [c for c in checks if c.mode is None or c.mode in modes]
     status = "red" if any(c.status == FAIL for c in checks) else "green"
     return Day(day, status, checks)
 

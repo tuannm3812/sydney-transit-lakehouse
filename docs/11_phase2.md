@@ -43,6 +43,8 @@ It exits 0 only when the last green run reaches `--days` (7). On the host: `dock
 
 A day is `open` until trip updates were captured past its last trip's end plus the grace, so the newest day never counts early. The draft report fills R2-02's tables from the JSON; Findings are written by hand before it is set to Final, as for R0-02.
 
+**Rehearsal, 27 Nov (cloud, raw hours 24 Nov 12:00 to 26 Nov 23:00 UTC replayed from object storage, gold built unwindowed).** 41 of 43 dbt nodes passed; the two failures were share tests on the partial edge days 24 and 27 Nov, which the gate judges per day and so leaves out of 25 and 26 Nov. Every day was red on one thing: **trains have no realtime trip state** (379,784 train `trip_status` rows, none with a `start_date`, so `stg_rt_trip_state` drops them and no train operator is covered). With trains left out (`--mode bus --mode metro --mode lightrail --mode ferry`), 26 Nov is green on all 49 checks and 25 Nov is red only on metro capture (394 of 433 trips, 91.0%): the metro trip-update files have gaps of 150 to 210 s between 14:04 and 14:36 UTC (about 1 am Sydney), over the 120 s coverage limit. Trip left the feed: 100% of trips seen to run left it on both days, and no snapshot ended more than 3.5% of the bus trips.
+
 ## Models
 
 | Layer | Model | One row per | Notes |
@@ -76,7 +78,7 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
 | 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
 | 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
-| 14 | **Gate check** (`gold gate`, D-057) and the R2-02 draft (`gold gate-report`) | built; rehearsed on replayed S3 days (see below) | the worker live, then 7 green days |
+| 14 | **Gate check** (`gold gate`, D-057) and the R2-02 draft (`gold gate-report`) | built; rehearsed on 25 and 26 Nov replayed from S3 (below) | the worker live, then 7 green days |
 
 ## Open risks
 
