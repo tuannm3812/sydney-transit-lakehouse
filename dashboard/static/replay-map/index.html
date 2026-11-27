@@ -6,9 +6,9 @@
 <title>Map replay</title>
 <!-- Map replay (Phase 3, D-045). Data: `python -m transit_lakehouse.gold
      replay --out dashboard/static/replay-map/data`, one JSON per Sydney hour. -->
-<link rel="stylesheet" href="vendor/maplibre-gl.css">
-<script src="vendor/maplibre-gl.js"></script>
-<script src="vendor/deck.gl.min.js"></script>
+<link rel="stylesheet" href="/replay-map/vendor/maplibre-gl.css">
+<script src="/replay-map/vendor/maplibre-gl.js"></script>
+<script src="/replay-map/vendor/deck.gl.min.js"></script>
 <style>
   :root {
     --bg: #ffffff; --ink: #1b2430; --muted: #5a6370; --line: #d8dee3;
@@ -73,7 +73,9 @@ const MODES = {
 const NAMES = { bus: 'Bus', train: 'Trains', metro: 'Metro',
   lightrail: 'Light rail', ferry: 'Ferries', nswtrains: 'NSW TrainLink',
   coach: 'Coaches' };
-const DATA = 'data/';
+// Absolute, so the player works whether or not the host keeps the
+// trailing slash (the site is served from the domain root).
+const DATA = '/replay-map/data/';
 const $ = (id) => document.getElementById(id);
 let index = null, hour = null, tracks = [], bunches = [], t = 0;
 let playing = false, last = null;
