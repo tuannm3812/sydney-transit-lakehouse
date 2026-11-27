@@ -9,6 +9,7 @@ select
         when 'lightrail' then 'Light rail'
         when 'ferry' then 'Ferries'
         when 'nswtrains' then 'NSW TrainLink'
+        when 'coach' then 'Coaches'
         else mode
     end as mode_name
 from read_parquet('../data/gold/public/trip_match.parquet')

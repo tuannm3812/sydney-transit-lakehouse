@@ -7,7 +7,7 @@ sidebar_position: 2
   // TfNSW mode colours (lakehouse-deck scripts/colours.py).
   const modeColours = {
     'Bus': '#00B5EF', 'Trains': '#F6891F', 'Metro': '#00959A',
-    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7'
+    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7', 'Coaches': '#B9C0C7'
   };
 </script>
 
@@ -127,7 +127,7 @@ order by trips_checked desc
 
 ## Every ghost trip
 
-Confidence is **high** when other trips of the same route were seen that day and vehicle positions were captured for the whole run, **medium** when other trips of the route were seen, and **low** otherwise. A sample of flagged trips is checked by hand against the raw snapshots for every report.
+For never-seen trips, confidence is **high** when other trips of the same route were seen that day and vehicle positions were captured for the whole run, **medium** when other trips of the route were seen, and **low** otherwise. Vanished trips are always **medium**: the feed saw them, so the question is only why they left it early. A sample of flagged trips is checked by hand against the raw snapshots for every report.
 
 ```sql trips
 select

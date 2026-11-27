@@ -8,7 +8,7 @@ sidebar_position: 3
   // colour scale is Viridis, from the site theme.
   const modeColours = {
     'Bus': '#00B5EF', 'Trains': '#F6891F', 'Metro': '#00959A',
-    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7'
+    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7', 'Coaches': '#B9C0C7'
   };
 </script>
 
@@ -22,7 +22,7 @@ select distinct day_type from transit.bunching_hotspots order by day_type desc
   <DropdownOption value="%" valueLabel="Weekdays and weekends" />
 </Dropdown>
 
-Each circle is a stop on one route, both directions and all hours together, with at least ten gaps between vehicles and at least three of them bunched. Bigger circles saw more bunched gaps; the colour is the share of the stop's gaps that were bunched.
+Each circle is a stop on one route, both directions and all hours together, with at least ten gaps between vehicles and at least three of them bunched. Only stop-hours with three or more gaps count towards a circle, so quiet hours are left out; the by-hour chart below counts every gap. Bigger circles saw more bunched gaps; the colour is the share of the stop's gaps that were bunched.
 
 ```sql spots
 select
@@ -30,6 +30,8 @@ select
     stop_lat,
     stop_lon,
     mode_name as mode,
+    region,
+    route_id,
     route_short_name as route,
     sum(headways) as gaps,
     sum(bunched) as bunched_gaps,
@@ -101,6 +103,8 @@ order by local_hour
 ```sql routes
 select
     mode_name,
+    region,
+    route_id,
     route_short_name as route,
     count(*) as bunches,
     median(stops_bunched) as median_stops_together,
@@ -116,6 +120,7 @@ limit 50
 <DataTable data={routes} emptySet=pass emptyMessage="No rows for this selection" rows=15 search=true>
   <Column id=mode_name title="Mode" />
   <Column id=route />
+  <Column id=region />
   <Column id=bunches fmt=num0 />
   <Column id=median_stops_together title="Stops bunched (median)" fmt=num0 />
   <Column id=median_closest_gap_min title="Closest gap, min" fmt=num1 />

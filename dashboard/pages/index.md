@@ -8,11 +8,11 @@ sidebar_position: 1
   // (lakehouse-deck scripts/colours.py). Every other chart uses Viridis.
   const modeColours = {
     'Bus': '#00B5EF', 'Trains': '#F6891F', 'Metro': '#00959A',
-    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7'
+    'Light rail': '#EE343F', 'Ferries': '#5AB031', 'NSW TrainLink': '#B9C0C7', 'Coaches': '#B9C0C7'
   };
 </script>
 
-Every timetabled trip on Sydney's network, checked against what Transport for NSW's live feeds actually showed. A collector has polled the open GTFS-realtime feeds every 15 to 30 seconds since 17 November 2026, and every number here is built from those raw snapshots.
+Timetabled trips on Sydney's network, checked against what Transport for NSW's live feeds actually showed. A collector has polled the open GTFS-realtime feeds since 17 November 2026, vehicle positions every 15 seconds (ferries 30) and trip updates every 30, and every number here is built from those raw snapshots. Buses, Metro, Inner West light rail and ferries are judged; Sydney Trains not yet (see [About](/about)).
 
 ```sql totals
 select
@@ -36,7 +36,7 @@ select
 from transit.bunching_events
 ```
 
-{#if totals.length > 0 && totals[0].service_days < 7}
+{#if totals.length > 0 && totals[0].service_days > 0 && totals[0].service_days < 7}
 
 <Alert status="info">
 <b>Early results.</b> This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="d mmm yyyy" /> to <Value data={totals} column=last_day fmt="d mmm yyyy" />, rebuilt from the raw archive. A few days are not a pattern: treat route rankings as leads, not verdicts. Days are added as the live pipeline builds them.
@@ -50,7 +50,7 @@ from transit.bunching_events
 <BigValue data={totals} value=trips_vanished title="Vanished mid-route" fmt=num0 comparison=vanished_share comparisonFmt=pct2 comparisonTitle="of trips checked" comparisonDelta=false />
 <BigValue data={bunch_total} value=bunches title="Bunches spotted" fmt=num0 />
 
-A trip is checked only when the feed was being captured from before it was due to start until after it was due to end, and only for operators that published live data that day. A gap in our own collection never reads as a missing bus.
+A trip is checked only when the feed was being captured from ten minutes before it was due to start until three hours after it was due to end, and only for operators that published live data that day. A gap in our own collection never reads as a missing bus.
 
 ## By mode
 

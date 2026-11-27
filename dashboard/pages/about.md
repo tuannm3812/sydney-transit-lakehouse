@@ -22,7 +22,7 @@ This edition covers <Value data={totals} column=service_days /> service days, <V
 
 ## The data
 
-- **Live feeds**: Transport for NSW's GTFS-realtime vehicle positions and trip updates for buses, Sydney Trains, Metro, Inner West light rail and ferries, and the statewide service alerts. A collector polls them every 15 to 30 seconds and keeps every distinct snapshot, untouched.
+- **Live feeds**: Transport for NSW's GTFS-realtime vehicle positions and trip updates for buses, Sydney Trains, Metro, Inner West light rail and ferries, and the statewide service alerts. A collector polls vehicle positions every 15 seconds (ferries 30), trip updates every 30 and alerts every 60, and keeps every distinct snapshot, untouched. Buses, trains and metro have been collected since 17 November 2026, light rail and ferries since 18 November.
 - **Timetable**: Transport for NSW's complete static GTFS timetable, fetched as it is republished, so each day is judged against the timetable in effect that day.
 - **Source and licence**: Transport for NSW Open Data Hub, under Creative Commons Attribution 4.0. Map tiles © OpenStreetMap contributors and © CARTO.
 
@@ -33,7 +33,7 @@ Raw snapshots land in object storage by feed and hour. A small worker decodes th
 ## How a trip is judged
 
 1. Each realtime trip is matched to the timetable on its trip id and service day.
-2. A trip is judged only if its operator published live data that day, and the feed was captured from ten minutes before its start until after its scheduled end. A gap in our own collection makes a trip unjudged, never a ghost.
+2. A trip is judged only if its operator published live data that day, and the feed was captured from ten minutes before its start until three hours after its scheduled end. A gap in our own collection makes a trip unjudged, never a ghost.
 3. A judged trip that no trip update or vehicle position ever named is **never seen**. One that left the feed with more than two stops to go, more than ten minutes before its scheduled end, **vanished**. Everything else **ran**, or was cancelled in the feed.
 4. Bunching compares each pair of consecutive vehicles at each stop with the gap the timetable planned between the same two trips. A gap under a third of the plan is bunched, and a pair bunched at three or more stops is a **bunch**. A bus that overtakes the one ahead counts.
 

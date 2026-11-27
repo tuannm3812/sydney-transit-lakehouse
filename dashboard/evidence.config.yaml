@@ -2,8 +2,8 @@ deployment:
   basePath: ""
 
 # Charts use Viridis (the decks and the poster do too). Series that are
-# transport modes override it with TfNSW's mode colours, set per chart
-# from the mode_colour column of each source query.
+# transport modes override it with TfNSW's mode colours: each source
+# query adds mode_name, and the pages pass seriesColors keyed on it.
 appearance:
   default: light
   switcher: true
