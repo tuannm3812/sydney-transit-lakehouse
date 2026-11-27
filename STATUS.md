@@ -1,6 +1,6 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-26 (day 8, ferry freshness I-22, D-055).*
+*Rewritten in place. Last updated 2026-11-27 (day 9; gate due 27 Nov 16:00 UTC).*
 
 **Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
@@ -50,6 +50,7 @@ Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 
 | 6 | 2026-11-23 | 99.31% (bus TU); all 12 feeds pass | not recorded | Server cron 23 Nov 00:05 – 24 Nov 00:05 UTC on a869ede (D-037 logic, deployed 23 Nov without a collector restart). TfNSW slowdown I-18 (02:35 – 02:52 UTC, gaps 164 – 285 s) tagged "within D-037 allowance" on 10 realtime feeds. Third clean day of the restarted gate. Uploads 0 failed; 53 GB free before the 01:40 prune. |
 | 7 | 2026-11-24 | 100.00% (all 12 feeds) | ≤ 20 s realtime VP/TU; 84 s alerts | Server cron 24 Nov 00:05 – 25 Nov 00:05 UTC; longest realtime gap 33 s, no warnings or D-037 tags. Fourth clean day of the restarted gate. Prune 266 hours (3.99 GB), 0 failed; uploads 0 failed (3,029 objects); 52 GB free. |
 | 8 | 2026-11-25 | 100.00% capture (all 12 feeds); ferries VP and TU fail freshness | ≤ 15 s buses, trains, metro, light rail; 85 s alerts; ferries about 3,950 s | Server cron 25 Nov 00:05 – 26 Nov 00:05 UTC. TfNSW froze both ferry feeds on an empty snapshot overnight (I-22), so freshness failed while capture was 100%. Under D-055 empty snapshots are exempt and the day passes once the change is deployed. Other 10 feeds pass. Prune 265 hours (3.32 GB), 0 failed; 53 GB free. |
+| 9 | 2026-11-26 | 99.93% (service alerts); all 12 feeds pass | not recorded | Server cron 26 Nov 00:05 – 27 Nov 00:05 UTC on 6625e13 (D-055 live); longest realtime gap 59 s, no D-037 tags, no alerts. Gate preview 27 Nov 00:45 UTC over 20 Nov 16:45 onward: exit 0, all 12 feeds pass (lowest 99.48% bus TU). Uploads 0 failed; 47 GB free before the 01:40 prune. |
 
 ## Blocked on Mike
 
