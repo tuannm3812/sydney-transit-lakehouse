@@ -15,7 +15,8 @@ Follow the master standard at `~/Documents/GitHub/coding-standards/` (package-fi
 5. [docs/9_phase1.md](docs/9_phase1.md): the Phase 1 plan, its work items and what waits for the Phase 0 gate.
 6. [docs/11_phase2.md](docs/11_phase2.md): the Phase 2 plan (gold marts and quality tests) and its work items.
 7. [docs/12_phase3.md](docs/12_phase3.md): the Phase 3 plan (ghost tracker, bunching radar, map replay, dashboard) and its work items.
-8. [docs/10_incidents.md](docs/10_incidents.md): every incident so far, its impact and its fix. Add a row when something breaks.
+8. [docs/13_spark_benchmark.md](docs/13_spark_benchmark.md): the Redpanda + Spark benchmark (D-041, D-056) and its benchmark-day runbook.
+9. [docs/10_incidents.md](docs/10_incidents.md): every incident so far, its impact and its fix. Add a row when something breaks.
 
 ## Evidence locations
 

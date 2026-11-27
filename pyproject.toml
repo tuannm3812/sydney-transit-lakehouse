@@ -26,6 +26,14 @@ gold = [  # Phase 2 marts, D-035
     "duckdb>=1.1,<3",
     "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
 ]
+bench = [  # Redpanda + Spark benchmark, D-041 (never on the collector)
+    "boto3>=1.35",
+    "confluent-kafka>=2.6,<3",
+    "duckdb>=1.1,<3",
+    "pandas>=2.2,<4",
+    "pyiceberg[pyarrow,sql-sqlite]>=0.10,<1",
+    "pyspark==4.1.4",
+]
 report = ["markdown-it-py>=3,<5"]  # PDF reports, docs/reports/README.md
 dev = [
     "boto3>=1.35",

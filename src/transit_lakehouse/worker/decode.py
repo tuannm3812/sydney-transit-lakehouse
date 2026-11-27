@@ -199,16 +199,37 @@ def _repair(body: bytes) -> gtfs_realtime_pb2.FeedEntity | None:
 def read_snapshot(data_dir: Path, feed: str, rel: str) -> Snapshot:
     """Read and decode one landed file."""
     path = data_dir / rel
-    fetched, sha12 = parse_name(path.name)
+    size = path.stat().st_size
+    try:
+        stored = path.read_bytes()
+    except OSError as exc:
+        fetched, sha12 = parse_name(path.name)
+        return Snapshot(
+            feed=feed,
+            source_file=rel,
+            fetched_at=fetched,
+            sha12=sha12,
+            stored_bytes=size,
+            decode_error=f"read_error: {exc}",
+        )
+    return snapshot_from_bytes(feed, rel, stored)
+
+
+def snapshot_from_bytes(feed: str, rel: str, stored: bytes) -> Snapshot:
+    """Decode one landed file's bytes, as stored (gzipped or not).
+
+    The Spark benchmark gets the same bytes from Redpanda instead of the
+    disk (transit_lakehouse.bench), so both paths decode identically."""
+    fetched, sha12 = parse_name(rel.rsplit("/", 1)[-1])
     snap = Snapshot(
         feed=feed,
         source_file=rel,
         fetched_at=fetched,
         sha12=sha12,
-        stored_bytes=path.stat().st_size,
+        stored_bytes=len(stored),
     )
     try:
-        payload = read_payload(path)
+        payload = gzip.decompress(stored) if rel.endswith(".gz") else stored
     except (OSError, EOFError, gzip.BadGzipFile) as exc:
         snap.decode_error = f"read_error: {exc}"
         return snap

@@ -19,7 +19,7 @@ Phase 1 turns the landed raw snapshots into Iceberg tables with a small always-o
 | 7 | **Compaction** of small files by closed hour (D-032), and per-trip delay encoding to shrink bus `stop_prediction` (D-028) | done | |
 | 8 | **Deploy the worker** on the collector host (`docker compose --profile worker up -d worker`) | ready after item 2 | **the Phase 0 gate (about 28 Nov, D-033)**; pre-approved runbook (D-043), SSH approval names the commit |
 | 9 | **Iceberg warehouse on S3** (prefix `lakehouse/` in the raw bucket; the role needs delete on that prefix only, for expiry and compaction) | proposed | Mike approves the IAM change |
-| 10 | **Redpanda + Spark benchmark**: compose profile that replays raw into Redpanda and runs Spark into a separate `bench` namespace; compare latency, cost and ops load with the worker | planned | Mike approves an on-demand 8–16 GB instance for the run hours |
+| 10 | **Redpanda + Spark benchmark** (docs/13_spark_benchmark.md, D-056): `bench` compose profile replays S3 hours into Redpanda and runs Spark into a separate lakehouse; compare latency, cost and ops load with the worker | built 27 Nov; rehearsed on a real peak hour, `verify` identical (28 of 28 table-hours) | Mike starts an on-demand 8–16 GB instance for the run day, about 3 Dec (D-041) |
 | 11 | **Re-decide the long-term host** before the AWS credits end (D-015) | open | Mike |
 
 ## Tables built by item 1
