@@ -34,10 +34,15 @@ CI builds the site against the synthetic route in `tests/test_gold_products.py` 
 
 | Page | Shows | From |
 |---|---|---|
-| `/` | trips checked, share that ran, never seen and vanished, by day and mode | `service_days`, `route_honesty`, `bunching_events` |
+| `/` | trips checked, share that ran, never seen and vanished, by mode and service day | `service_days`, `route_honesty`, `bunching_events` |
 | `/ghosts` | ghost trips by hour, route and operator, and every ghost trip | `ghost_trips`, `route_honesty` |
 | `/bunching` | hot-spot map, bunched share by hour, routes that bunch most, every bunch | `bunching_hotspots`, `bunching_by_hour`, `bunching_events` |
 | `/replay` | the map replay (`static/replay/index.html`, deck.gl on MapLibre) | replay JSON |
 | `/quality` | the last build's checks and trip match by mode | `quality`, `trip_match` |
+| `/about` | the data, its licence, the method and its limits | `service_days`, `quality` |
+
+## Colours
+
+Charts use Viridis, set as the default palette and colour scale in `evidence.config.yaml`. A series that is a transport mode uses TfNSW's mode colours instead (Bus `#00B5EF`, Trains `#F6891F`, Metro `#00959A`, Light rail `#EE343F`, Ferries `#5AB031`), the same values as the decks and the poster. Each source query in `sources/transit/` adds `mode_name`, the public name the colours are keyed on.
 
 Wording follows docs/7_data_model.md: "never seen" is a ghost candidate, not proof a trip did not run.

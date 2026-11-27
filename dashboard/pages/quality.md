@@ -1,5 +1,6 @@
 ---
 title: Data quality
+sidebar_position: 5
 ---
 
 Every number on this site comes from a build that runs these checks first. A failed check is shown here, not hidden.
@@ -22,14 +23,14 @@ Last build: <Value data={summary} column=built_at fmt="d mmm yyyy H:MM AM/PM" />
 ## Realtime trips that match the timetable
 
 ```sql match
-select service_date, mode, realtime_trips, matched_trips, match_share
+select service_date, mode_name, realtime_trips, matched_trips, match_share
 from transit.trip_match
-order by service_date desc, mode
+order by service_date desc, mode_name
 ```
 
 <DataTable data={match} emptySet=pass emptyMessage="No rows for this selection yet" rows=20>
   <Column id=service_date />
-  <Column id=mode />
+  <Column id=mode_name title="Mode" />
   <Column id=realtime_trips fmt=num0 />
   <Column id=matched_trips fmt=num0 />
   <Column id=match_share title="Matched" fmt=pct1 />
