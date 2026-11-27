@@ -62,6 +62,9 @@ services:
     command: ["run", "--loop", "60"]
     environment:
       DATA_DIR: /data
+      # For `replay --bucket` (the gate-day backfill, D-040): S3 reads
+      # with the instance role, as the offload job does.
+      AWS_REGION: ap-southeast-2
     volumes:
       - ./data:/data
       - ./config:/app/config:ro
