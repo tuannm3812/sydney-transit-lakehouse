@@ -46,7 +46,7 @@ def _mem_mb(text: str) -> float:
     for unit, scale in units.items():
         if used.endswith(unit):
             return float(used[: -len(unit)]) * scale * 1.048576
-    return float("nan")
+    raise ValueError(f"no memory figure in {text!r}")
 
 
 def summarise(metrics: Path, stats: Path | None = None) -> str:
@@ -111,8 +111,13 @@ def _stats_table(path: Path) -> list[str]:
     mem = defaultdict(list)
     cpu = defaultdict(list)
     for s in _load(path):
-        mem[s["Name"]].append(_mem_mb(s["MemUsage"]))
-        cpu[s["Name"]].append(float(s["CPUPerc"].rstrip("%")))
+        try:  # docker prints "--" while a container starts or stops
+            used = _mem_mb(s["MemUsage"])
+            share = float(s["CPUPerc"].rstrip("%"))
+        except (KeyError, ValueError):
+            continue
+        mem[s["Name"]].append(used)
+        cpu[s["Name"]].append(share)
     out = [
         "",
         "| container | samples | peak memory | mean CPU | peak CPU |",

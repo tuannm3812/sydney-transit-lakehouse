@@ -16,7 +16,7 @@ S3 hour tars ──bench produce──▶ Redpanda ──Spark Structured Stream
 | Piece | Code | What it does |
 |---|---|---|
 | Producer | `bench produce` (bench/source.py, producer.py) | Reads one hour of every realtime feed at a time from the hour tars, exactly as `worker replay` does, and sends each landed file's stored bytes (gzipped) to `raw.<kind>`, keyed by feed so a feed's files keep their order. Each feed starts with one seed message, the last readable file of the hour before the window (D-049). `--speed 1` sends each file when its fetch time comes round again, standing in for the collector; `--speed 0` sends flat out. |
-| Stream | `bench stream` (bench/stream.py, diff.py) | Kafka source → `groupBy(feed).applyInPandasWithState` → `foreachBatch`. The per-feed step runs the worker's own `FeedDiffer` on each message, with the feed's last readable file as Spark state, so a restart or a batch retried on another Python worker rebuilds the same baseline. The sink appends each table through Spark's Iceberg writer and logs, per snapshot, when the broker took it and when its batch committed. Hourly it compacts and expires with Iceberg's `rewrite_data_files` and `expire_snapshots`, as `run --loop` does with its own code (D-032). |
+| Stream | `bench stream` (bench/stream.py, diff.py) | Kafka source → `groupBy(feed).applyInPandasWithState` → `foreachBatch`. The per-feed step runs the worker's own `FeedDiffer` on each message, with the feed's last readable file as Spark state, so a restart or a batch retried on another Python worker rebuilds the same baseline. The sink appends each table through Spark's Iceberg writer and logs, per snapshot, when the broker took it and when its batch committed. Each data hour, once a later fetch time has committed, is compacted with Iceberg's `rewrite_data_files` filtered to that hour's `fetched_at` (never the whole `(obs_date, mode)` partition), and snapshots older than 24 h are expired with `expire_snapshots`, as `run --loop` does with its own code (D-032). In a paced run that is once a wall-clock hour; flat out it comes round faster. |
 | Catalog | Iceberg JDBC catalog on SQLite | Same file layout and catalog name as the worker (`data-bench/<run>/lakehouse/catalog.db`). PyIceberg creates the tables with the worker's schemas, partitioning and properties; Spark only appends. So `worker verify`, `worker status` and the gold build open the result unchanged. |
 | Report | `bench report` (bench/report.py) | Rows per table, batch times, compaction time, and latency per feed (p50, p95, max of broker → commit), plus peak memory and CPU per container from `docker stats` samples. |
 
@@ -26,7 +26,7 @@ Versions: Spark 4.1.4 (Scala 2.13), Iceberg 1.12.0, Redpanda 25.2.10, Java 21 (T
 
 ## Rehearsal in the cloud sandbox, 27 Nov
 
-Real S3 hours, 25 Nov 21:00 to 22:00 UTC (8 to 9 am Sydney, Wednesday peak), all 11 realtime feeds, on 4 cores and 15 GB. Spark ran `local[*]` from a virtualenv; Redpanda in Docker.
+Evidence: [docs/reports/bench-rehearsal-20261127.md](reports/bench-rehearsal-20261127.md). Real S3 hours, 25 Nov 21:00 to 22:00 UTC (8 to 9 am Sydney, Wednesday peak), all 11 realtime feeds, on 4 cores and 15 GB. Spark ran `local[*]` from a virtualenv; Redpanda in Docker.
 
 | Check | Result |
 |---|---|
@@ -35,7 +35,8 @@ Real S3 hours, 25 Nov 21:00 to 22:00 UTC (8 to 9 am Sydney, Wednesday peak), all
 | Worker replay, same hour, same box | the same 6,779,294 rows in 176 s including the S3 download |
 | `worker verify`, worker replay vs Spark | **28 of 28 table-hours identical** (row count and order-free digest per table, feed and hour) |
 | Spark at 5× real time, 10 s trigger | the same hour in 12.6 minutes, 77 micro-batches of 5.3 s median (7.7 s max), so it kept up with room to spare. Broker → commit per feed: p50 8.6 to 11.5 s, **p95 13.4 to 16.0 s**, max 17.3 s, against the worker's 60 s SLA. Peak memory about 4.0 GB (Spark JVM about 2.0 GB plus Python workers), against the worker's 900 MB cap. `verify` against the worker replay: 28 of 28 identical |
-| Bench image in Compose | `Dockerfile.bench` builds; Redpanda, the stream and the producer ran from Compose on 4 feeds of the same hour (522 messages, 155,492 rows). `verify` against the worker replay: 10 of 11 table-hours identical; the 11th, `bronze.snapshot` for Service Alerts, differed only in `decode_error` text, because the image had protobuf 7.36 and the worker run 6.33 (`…FeedMessage': Wire format was corrupt` vs `…FeedMessage'`). `run_day.sh` now refuses to start unless both images have the same protobuf. |
+| Bench image in Compose | `Dockerfile.bench` builds; Redpanda, the stream and the producer ran from Compose on 4 feeds of the same hour (522 messages, 155,492 rows). `verify` against the worker replay: 10 of 11 table-hours identical; the 11th, `bronze.snapshot` for Service Alerts, differed only in `decode_error` text, because the image had protobuf 7.36 and the worker run 6.33 (`…FeedMessage': Wire format was corrupt` vs `…FeedMessage'`). `run_day.sh` now builds the bench image with the worker image's protobuf (`PROTOBUF_VERSION` build argument) and refuses to start if they still differ. |
+| After the 27 Nov review fixes | Flat out on 4 feeds over two hours (21:00 to 23:00 UTC): the closed hour 21:00 was compacted once (5.7 s) and `verify` found 22 of 22 table-hours identical. |
 
 Flat-out latency means nothing (every file waits behind the backlog), so latency comes from the paced run. Unit tests (`tests/test_bench.py`) cut a replayed window into random micro-batches, drop the per-worker cache at random, and check the rows still equal the live worker's under `verify`.
 
@@ -49,12 +50,12 @@ Mike starts and stops the instance (D-041). Nothing here runs on the collector h
 4. **Run.** `nohup scripts/bench/run_day.sh sydney-transit-lakehouse-raw-7342 2026-12-02 &`. It runs, in order:
    - **A, paced:** the day at real time (`--speed 1`, about 24 h) into `data-bench/paced`, for latency and steady-state memory and CPU;
    - **B, flat out:** the same day into `data-bench/flat`, for backfill throughput (about 2 h at the rehearsal's 13×);
-   - **C, worker:** `worker replay` of the same day under its 900 MB cap, timed, then `worker verify` of A and B against it.
+   - **C, worker:** `worker replay` of the same day under its 900 MB cap, timed, in 4-hour chunks with `worker expire --older-than 0h` between them, because replay does not expire as it goes yet (I-20, open; the workaround R3-01 used). Then `worker verify` of A and B against it.
 
-   It first builds both images and stops if their protobuf versions differ (see the rehearsal).
+   It first builds the worker image, builds the bench image with the same protobuf, and stops if they still differ. If the stream container exits part-way, the producer is killed, the stream's log is kept in `data-bench/stream-<run>.log` and the script stops with its exit code.
 
-   `docker stats` is sampled every 30 s into `data-bench/stats.jsonl` throughout. To cut the day short, pass a speed above 1 (for example 4 for about 6 h) and say so in the report.
-5. **Results.** `data-bench/report-paced.md` and `report-flat.md`, the worker's wall time and the verify lines in `data-bench/run_day.log`, and `stats.jsonl` (the worker container's memory is in it too). Copy them off the box (`scp`), then write report R1-02 (docs/reports/README.md): latency p50/p95 per feed against the 60 s SLA, peak memory against the 900 MB worker cap, throughput, instance-hours and cost, ops notes (moving parts, restarts, what broke).
+   `docker stats` is sampled every 30 s into one file per run (`data-bench/stats-paced.jsonl`, `stats-flat.jsonl`, `stats-worker.jsonl`). To cut the day short, pass a speed above 1 (for example 4 for about 6 h) and say so in the report.
+5. **Results.** `data-bench/report-paced.md` and `report-flat.md`, the worker's wall time and the verify lines in `data-bench/run_day.log`, and the `stats-*.jsonl` files (the worker's memory is in `stats-worker.jsonl`). Copy them off the box (`scp`), then write report R1-02 (docs/reports/README.md): latency p50/p95 per feed against the 60 s SLA, peak memory against the 900 MB worker cap, throughput, instance-hours and cost, ops notes (moving parts, restarts, what broke).
 6. **Stop (Mike).** Terminate the instance and delete its volume once the files are copied. Nothing else to clean up: the bucket is only read.
 
 **Cost.** About 27 instance-hours. At on-demand prices for an 8 GB instance in Sydney that is a few US dollars, paid from the credits; check the current hourly price in the EC2 console before starting. S3 GETs for a day are about 300 requests, and same-region transfer is free.

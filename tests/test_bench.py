@@ -254,3 +254,89 @@ def test_check_lists_missing_hours(tmp_path: Path) -> None:
     assert missing_hours(source, FEEDS, START, END) == []
     gone = missing_hours(source, FEEDS, START, END + timedelta(hours=1))
     assert len(gone) == len(FEEDS) and all("hour=05" in k for k in gone)
+
+
+def test_a_resent_failed_file_is_applied_once(tmp_path: Path) -> None:
+    _, msgs = _messages(tmp_path)
+    tu = [(m, v) for m, v in msgs if m.feed == TU_FEED.name]
+    bad = tu[3][0]
+    broken = diff.Incoming(
+        bad.source_file.replace(".pb.gz", "0.pb.gz"), b"not gzip", False, None
+    )
+
+    def batch(chunk):
+        return [
+            diff.Incoming(m.source_file, v, m.seed, None) for m, v in chunk
+        ]
+
+    diff._CACHE.clear()
+    first, state = diff.diff_batch(
+        TU_FEED.name,
+        "trip_updates",
+        [*batch(tu[:4]), broken],
+        diff.FeedState(),
+    )
+    assert state.last_seen == broken.source_file
+    assert state.last_file == bad.source_file  # the readable baseline
+    again, _ = diff.diff_batch(
+        TU_FEED.name, "trip_updates", [broken, *batch(tu[4:5])], state
+    )
+    files = again.filter(pc.equal(again[diff.TABLE_COL], "bronze.snapshot"))[
+        "source_file"
+    ].to_pylist()
+    assert files == [tu[4][0].source_file]
+
+
+def test_union_rows_keep_their_types_through_pandas(tmp_path: Path) -> None:
+    """The stream hands Spark pandas frames; nullable ints must stay
+    ints and timestamps UTC, or Spark rejects the batch."""
+    from transit_lakehouse.bench.stream import _pandas_type, output_ddl
+
+    _, msgs = _messages(tmp_path)
+    diff._CACHE.clear()
+    union = _run(msgs, None)[TU_FEED.name]
+    frame = union.to_pandas(types_mapper=_pandas_type)
+    back = pa.Table.from_pandas(
+        frame, schema=union.schema, preserve_index=False
+    )
+    assert back.equals(union)
+    ddl = output_ddl()
+    assert "`delay_s` INT" in ddl and "`fetched_at` TIMESTAMP" in ddl
+    assert ddl.count("`") == 2 * len(diff.union_arrow_schema())
+
+
+class _FakeSpark:
+    def __init__(self) -> None:
+        self.sql_seen: list[str] = []
+
+    def sql(self, text: str):
+        self.sql_seen.append(text)
+        return self
+
+    def collect(self) -> list:
+        return []
+
+
+def test_compaction_runs_once_per_closed_data_hour(tmp_path: Path) -> None:
+    from transit_lakehouse.bench.stream import Sink, StreamConfig
+
+    spark = _FakeSpark()
+    sink = Sink(spark, StreamConfig(data_dir=tmp_path))
+    t = datetime(2026, 12, 2, 20, 10, tzinfo=UTC)
+    sink.maintain(t)  # first hour seen: nothing is closed yet
+    sink.maintain(t + timedelta(minutes=40))
+    assert spark.sql_seen == []
+    sink.maintain(t + timedelta(hours=1))  # 21:10: hour 20 is closed
+    rewrites = [q for q in spark.sql_seen if "rewrite_data_files" in q]
+    assert len(rewrites) == len(TABLES)
+    assert all(
+        "fetched_at >= TIMESTAMP '2026-12-02 20:00:00'" in q
+        and "fetched_at < TIMESTAMP '2026-12-02 21:00:00'" in q
+        for q in rewrites
+    )
+    spark.sql_seen.clear()
+    sink.maintain(t + timedelta(hours=1, minutes=30))  # still hour 21
+    assert spark.sql_seen == []
+    sink.maintain(t + timedelta(hours=4))  # flat out: 21, 22, 23 closed
+    hours = [q for q in spark.sql_seen if "rewrite_data_files" in q]
+    assert len(hours) == 3 * len(TABLES)

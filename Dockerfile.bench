@@ -22,7 +22,13 @@ RUN useradd --create-home --uid 1000 bench
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[bench]"
+# bronze.snapshot stores protobuf's error text, so the benchmark must
+# decode with the worker image's protobuf or verify differs on partial
+# decodes (27 Nov rehearsal). scripts/bench/run_day.sh passes it in.
+ARG PROTOBUF_VERSION=""
+RUN pip install --no-cache-dir ".[bench]" \
+    && if [ -n "$PROTOBUF_VERSION" ]; then \
+        pip install --no-cache-dir "protobuf==$PROTOBUF_VERSION"; fi
 
 # Fetch the Iceberg, Kafka and SQLite JDBC jars now, so a run never
 # depends on Maven Central being up.

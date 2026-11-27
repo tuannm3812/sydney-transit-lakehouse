@@ -58,6 +58,7 @@ class Incoming:
 class FeedState:
     last_file: str | None = None  # last readable file applied
     last_value: bytes | None = None
+    last_seen: str | None = None  # last file applied, failed or not
 
 
 # One differ per feed per Python worker, reused only while the saved
@@ -88,9 +89,13 @@ def diff_batch(
     differ = _differ(feed, kind, state)
     rows = Rows()
     produced: list[datetime | None] = []
-    new = FeedState(state.last_file, state.last_value)
+    new = FeedState(
+        state.last_file,
+        state.last_value,
+        state.last_seen or state.last_file,
+    )
     for msg in messages:
-        if new.last_file is not None and msg.source_file <= new.last_file:
+        if new.last_seen is not None and msg.source_file <= new.last_seen:
             continue  # a resend of a file already applied
         snap = snapshot_from_bytes(feed, msg.source_file, msg.value)
         if msg.seed:
@@ -99,7 +104,9 @@ def diff_batch(
             differ.apply(snap, rows, ingested_at=None)
             produced.append(msg.produced_at)
         if not snap.failed:
-            new = FeedState(msg.source_file, msg.value)
+            new = FeedState(msg.source_file, msg.value, msg.source_file)
+        else:
+            new.last_seen = msg.source_file
     _CACHE[feed] = (new.last_file, differ)
     return to_union(rows, produced), new
 

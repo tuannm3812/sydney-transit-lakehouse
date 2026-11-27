@@ -8,9 +8,9 @@ latency per snapshot. The catalog is Iceberg's JDBC catalog on a SQLite
 file in the worker's layout, so PyIceberg (and so ``worker verify``,
 ``worker status`` and the gold build) opens the result unchanged.
 
-Every hour the job compacts and expires with Iceberg's Spark procedures,
-like ``run --loop`` does with its own code (D-032), so the ops load is
-measured too.
+Each closed data hour is compacted, and old snapshots expired, with
+Iceberg's Spark procedures, as ``run --loop`` does with its own code
+(D-032), so the ops load is measured too.
 """
 
 # Table names come from the worker's fixed table list, never from data:
@@ -55,8 +55,7 @@ PACKAGES = (
 )
 CATALOG = "transit"  # the name PyIceberg's SqlCatalog writes (tables.py)
 KINDS = ("trip_updates", "vehicle_positions", "service_alerts")
-STATE_DDL = "last_file STRING, last_value BINARY"
-MAINTAIN_EVERY = timedelta(hours=1)
+STATE_DDL = "last_file STRING, last_value BINARY, last_seen STRING"
 
 
 @dataclass(frozen=True)
@@ -149,8 +148,8 @@ def _group_step(key, frames, state):
     kind = kind_of_topic(batch["topic"].iloc[0])
     saved = FeedState()
     if state.exists:
-        last_file, last_value = state.get
-        saved = FeedState(last_file, bytes(last_value))
+        last_file, last_value, last_seen = state.get
+        saved = FeedState(last_file, bytes(last_value), last_seen)
     msgs = (
         Incoming(
             r.source_file,
@@ -162,7 +161,7 @@ def _group_step(key, frames, state):
     )
     rows, new = diff_batch(feed, kind, msgs, saved)
     if new.last_file is not None:
-        state.update((new.last_file, new.last_value))
+        state.update((new.last_file, new.last_value, new.last_seen))
     if rows.num_rows:
         yield rows.to_pandas(types_mapper=_pandas_type)
 
@@ -191,7 +190,7 @@ class Sink:
         self.spark, self.cfg = spark, cfg
         cfg.metrics.mkdir(parents=True, exist_ok=True)
         self.done = self._committed_batches()
-        self.maintained = datetime.now(UTC)
+        self.compacted: datetime | None = None  # last data hour compacted
 
     def _committed_batches(self) -> set[int]:
         path = self.cfg.metrics / "batches.jsonl"
@@ -264,38 +263,72 @@ class Sink:
                 + "\n"
             )
         self.done.add(batch_id)
-        if self.cfg.maintain and committed - self.maintained >= (
-            MAINTAIN_EVERY
-        ):
-            self.maintain()
-            self.maintained = committed
+        newest = max(
+            (_utc(r["fetched_at"]) for r in snaps if r["fetched_at"]),
+            default=None,
+        )
+        if self.cfg.maintain and newest is not None:
+            self.maintain(newest)
 
-    def maintain(self) -> None:
-        """Hourly compaction and expiry with Iceberg's procedures."""
+    def maintain(self, newest: datetime) -> None:
+        """Compact each data hour once it is closed, then expire.
+
+        As the worker's ``run --loop`` does (D-032): an hour is closed
+        when a later fetch time has been committed, which in a paced run
+        is the wall-clock hour and in a flat-out run comes round faster.
+        Only that hour's files are rewritten (``where`` on
+        ``fetched_at``), never the whole ``(obs_date, mode)`` partition.
+        Snapshots older than 24 h by the wall clock are expired, as the
+        worker's ``EXPIRE_AFTER``."""
+        current = newest.replace(minute=0, second=0, microsecond=0)
+        if self.compacted is None:
+            # The first hour seen is closed once the next one starts.
+            self.compacted = current - timedelta(hours=1)
+            return
+        todo = []
+        hour = self.compacted + timedelta(hours=1)
+        while hour < current:
+            todo.append(hour)
+            hour += timedelta(hours=1)
+        if not todo:
+            return
         started = time.monotonic()
         cutoff = datetime.now(UTC) - timedelta(hours=24)
+        for hour in todo:
+            lo, hi = hour, hour + timedelta(hours=1)
+            where = (
+                f"fetched_at >= TIMESTAMP '{lo:%Y-%m-%d %H:%M:%S}' AND "
+                f"fetched_at < TIMESTAMP '{hi:%Y-%m-%d %H:%M:%S}'"
+            )
+            for name in TABLES:
+                self.spark.sql(
+                    f"CALL {CATALOG}.system.rewrite_data_files("
+                    f"table => '{CATALOG}.{name}', where => \"{where}\", "
+                    "options => map('min-input-files', '4'))"
+                ).collect()
         for name in TABLES:
             self.spark.sql(
-                f"CALL {CATALOG}.system.rewrite_data_files("
-                f"table => '{name}', "
-                "options => map('min-input-files', '4'))"
-            ).collect()
-            self.spark.sql(
                 f"CALL {CATALOG}.system.expire_snapshots("
-                f"table => '{name}', "
+                f"table => '{CATALOG}.{name}', "
                 f"older_than => TIMESTAMP '{cutoff:%Y-%m-%d %H:%M:%S}', "
                 "retain_last => 1)"
             ).collect()
+        self.compacted = todo[-1]
         with (self.cfg.metrics / "maintenance.jsonl").open("a") as fh:
             fh.write(
                 json.dumps(
                     {
                         "at": _iso(datetime.now(UTC)),
+                        "hours": [_iso(h) for h in todo],
                         "seconds": round(time.monotonic() - started, 3),
                     }
                 )
                 + "\n"
             )
+
+
+def _utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def _iso(value) -> str | None:
