@@ -72,7 +72,8 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: its 273 files merged into 4, so the bus tables went from 282 files to 13 (the 3 am hour's few files stay as they are), rows unchanged, 426 MB peak
 - [x] Memory on Linux (Docker, 900 MB cap): realtime about 530 MB, timetable about 737 MB, no OOM
 - [ ] **Gate day, about 28 Nov:** deploy the worker, then the overnight S3 backfill (D-043, D-040)
-- [ ] Redpanda + Spark benchmark: one on-demand day around 3 Dec, outside the Phase 1 gate (D-041; Mike starts and stops the instance)
+- [x] Redpanda + Spark benchmark built and rehearsed in the cloud on the real 25 Nov 8 am peak hour: Spark's tables equal the worker replay's, 28 of 28 table-hours identical (D-056, docs/13_spark_benchmark.md)
+- [ ] Redpanda + Spark benchmark day, around 3 Dec, outside the Phase 1 gate (D-041; Mike starts and stops the instance; runbook in docs/13_spark_benchmark.md)
 - [ ] Re-decide the long-term host before the AWS credits run out (D-015)
 
 ## Phase 2, started 2026-11-21 on branches (docs/11_phase2.md)

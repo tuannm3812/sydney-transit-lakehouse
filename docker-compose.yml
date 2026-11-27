@@ -1,7 +1,8 @@
 # Phase 0 runs the collector (and the offload and checks tools).
 # Phase 1 adds the light worker below, behind the "worker" profile
 # (D-023, D-027). Redpanda and Spark join only as an on-demand
-# benchmark (docs/9_phase1.md).
+# benchmark behind the "bench" profile, on a separate instance and never
+# on the collector host (D-041, docs/13_spark_benchmark.md).
 
 services:
   collector:
@@ -92,3 +93,69 @@ services:
       - ./data:/data
     mem_limit: 900m
     cpus: 1.0
+
+  # --- Redpanda + Spark benchmark (D-041, docs/13_spark_benchmark.md) ---
+  # Only on the on-demand benchmark instance. Everything it writes goes
+  # to ./data-bench, apart from Redpanda's log (a named volume).
+  redpanda:
+    image: redpandadata/redpanda:v25.2.10
+    profiles: ["bench"]
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --overprovisioned
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+    volumes:
+      - redpanda:/var/lib/redpanda/data
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health", "--exit-when-healthy"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  bench-stream:
+    # The Spark job: Redpanda -> bronze/silver Iceberg in ./data-bench.
+    build:
+      context: .
+      dockerfile: Dockerfile.bench
+    profiles: ["bench"]
+    command:
+      - stream
+      - --trigger=${BENCH_TRIGGER_S:-15}
+      - --driver-memory=${BENCH_DRIVER_MEMORY:-3g}
+    environment:
+      BENCH_BOOTSTRAP: redpanda:9092
+    volumes:
+      - ./data-bench:/bench
+      - ./config:/app/config:ro
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    mem_limit: ${BENCH_SPARK_MEM_LIMIT:-6g}
+
+  bench-produce:
+    # Replays S3 hours into Redpanda, `docker compose --profile bench run
+    # --rm bench-produce produce --bucket ... --start ... --end ...`.
+    # No env_file: S3 access comes from the instance role (read-only).
+    build:
+      context: .
+      dockerfile: Dockerfile.bench
+    profiles: ["bench"]
+    command: ["topics"]
+    environment:
+      BENCH_BOOTSTRAP: redpanda:9092
+      AWS_REGION: ap-southeast-2
+    volumes:
+      - ./data-bench:/bench
+      - ./config:/app/config:ro
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+volumes:
+  redpanda:

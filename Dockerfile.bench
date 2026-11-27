@@ -1,0 +1,39 @@
+# Redpanda + Spark benchmark image (D-041, docs/13_spark_benchmark.md).
+# Built only on the on-demand benchmark instance, never on the collector
+# host: Spark needs a JVM and several GB of memory.
+FROM eclipse-temurin:21-jre-noble AS jre
+
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    BENCH_DATA_DIR=/bench \
+    BENCH_IVY_DIR=/opt/ivy \
+    FEEDS_CONFIG=/app/config/feeds.toml \
+    JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Spark 4.1 runs on Java 17 or 21; copied from the Temurin image, so
+# the build needs no package manager.
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
+
+WORKDIR /app
+RUN useradd --create-home --uid 1000 bench
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir ".[bench]"
+
+# Fetch the Iceberg, Kafka and SQLite JDBC jars now, so a run never
+# depends on Maven Central being up.
+RUN python -c "from pyspark.sql import SparkSession; \
+from transit_lakehouse.bench.stream import PACKAGES; \
+SparkSession.builder.master('local[1]') \
+.config('spark.jars.ivy', '/opt/ivy') \
+.config('spark.jars.packages', ','.join(PACKAGES)).getOrCreate().stop()" \
+    && chown -R bench /opt/ivy
+
+COPY config ./config
+USER bench
+
+ENTRYPOINT ["python", "-m", "transit_lakehouse.bench"]

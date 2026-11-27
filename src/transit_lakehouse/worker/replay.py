@@ -63,6 +63,9 @@ class LocalTars:
     def __init__(self, root: Path) -> None:
         self.root = root
 
+    def exists(self, key: str) -> bool:
+        return (self.root / key).exists()
+
     def fetch(self, key: str, dest: Path) -> bool:
         src = self.root / key
         if not src.exists():
@@ -77,13 +80,18 @@ class S3Tars:
     def __init__(self, client: Any, bucket: str) -> None:
         self.client, self.bucket = client, bucket
 
-    def fetch(self, key: str, dest: Path) -> bool:
+    def exists(self, key: str) -> bool:
         try:
             self.client.head_object(Bucket=self.bucket, Key=key)
         except Exception as exc:  # botocore ClientError 404
             if "404" in str(exc) or "Not Found" in str(exc):
                 return False
             raise
+        return True
+
+    def fetch(self, key: str, dest: Path) -> bool:
+        if not self.exists(key):
+            return False
         self.client.download_file(self.bucket, key, str(dest))
         return True
 

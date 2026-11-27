@@ -5,6 +5,7 @@
 
 # Landed data and generated reports stay out of git
 data/
+data-bench/
 *.pb
 docs/reports/*
 !docs/reports/.gitkeep
