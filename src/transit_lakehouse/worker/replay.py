@@ -14,6 +14,20 @@ never needs more than one hour on disk. The hour before the window is
 read only for its last snapshot, so the first rows are diffed exactly
 as the live worker diffed them.
 
+It can also build straight into an existing lakehouse, which is how the
+gate-day backfill runs (D-040, D-043): ``--scratch`` keeps the hour
+files apart from the collector's ``raw/`` tree, and the tables'
+watermarks decide where each feed carries on. An empty table starts at
+``start``, and a feed that has a watermark carries on right after it
+(a cut run resumes; a window that starts later than the watermark is
+moved back to it), so the history never gets a hole. Windows therefore
+run oldest first, each starting where the last ended, and the live
+worker carries on from the last one's watermark (D-056). Every
+``maintain_every`` hours the run compacts the hours it built and
+expires every snapshot but the current one (incident I-20). Static
+timetable hours (``static_gtfs``) are loaded the same way, one zip at a
+time (D-029).
+
 ``verify`` compares two lakehouses hour by hour per feed and table with
 a row count and an order-free digest computed in DuckDB, streaming from
 Iceberg, so a whole day fits in the worker's memory.
@@ -45,8 +59,24 @@ from pyiceberg.expressions import (
 
 from transit_lakehouse.collector.config import Feed
 from transit_lakehouse.worker.decode import read_snapshot
-from transit_lakehouse.worker.runner import TABLES_FOR_KIND, run_once
-from transit_lakehouse.worker.tables import commit, ensure_tables
+from transit_lakehouse.worker.runner import (
+    TABLES_FOR_KIND,
+    expire,
+    run_once,
+)
+from transit_lakehouse.worker.tables import (
+    commit,
+    ensure_tables,
+    watermarks,
+)
+from transit_lakehouse.worker.timetable import (
+    FEED as TIMETABLE_FEED,
+)
+from transit_lakehouse.worker.timetable import (
+    VERSION_TABLE,
+    ensure_timetable_tables,
+    run_timetable,
+)
 
 log = logging.getLogger(__name__)
 IGNORED_COLUMNS = frozenset({"ingested_at"})
@@ -136,6 +166,58 @@ class ReplayStats:
     files: int = 0
     rows: dict[str, int] = field(default_factory=dict)
     missing_hours: list[str] = field(default_factory=list)
+    timetables: int = 0
+    maintenance: int = 0
+    skipped: list[str] = field(default_factory=list)
+
+
+# Compact and expire after this many replayed hours. Without it every
+# commit rewrites an ever larger metadata file: a cloud replay slowed
+# from about 40 s to 6 min per bus hour after ~1,850 snapshots (I-20).
+MAINTAIN_EVERY = 6
+
+
+def _hour_of(rel: str) -> datetime:
+    """The UTC hour of a raw file's path relative to the data dir."""
+    parts = dict(p.split("=", 1) for p in rel.split("/") if "=" in p)
+    return datetime.strptime(
+        f"{parts['date']}T{parts['hour']}", "%Y-%m-%dT%H"
+    ).replace(tzinfo=UTC)
+
+
+def _resume_from(
+    feed: str, mark: str, start: datetime, end: datetime
+) -> datetime | None:
+    """The first hour to build for a feed whose tables hold ``mark``
+    (their lowest watermark, "" when empty). None: nothing left.
+
+    A watermark in the hour before ``start`` chains on at ``start``.
+    Any other watermark wins over ``start``: inside the window (a cut
+    run) the feed resumes in the watermark's hour, and before it the
+    replay starts there instead, so the history never gets a hole."""
+    if not mark:
+        return start
+    at = _hour_of(mark)
+    first = start if at == start - timedelta(hours=1) else at
+    if first < start:
+        log.warning(
+            "%s: the tables end at %s, so replay starts at %s, not %s",
+            feed,
+            mark,
+            f"{first:%Y-%m-%dT%H}",
+            f"{start:%Y-%m-%dT%H}",
+        )
+    return first if first < end else None
+
+
+def _guard_scratch(scratch: Path) -> None:
+    if (scratch / "manifest").exists():
+        # The collector writes manifest/ next to raw/. Replay deletes
+        # each hour's files once built, so it must never work there.
+        raise ValueError(
+            f"{scratch} holds a poll manifest: it is the collector's data "
+            "folder. Give replay its own --scratch folder"
+        )
 
 
 def replay(
@@ -145,43 +227,113 @@ def replay(
     end: datetime,
     data_dir: Path,
     catalog: Catalog,
+    *,
+    maintain_every: int | None = MAINTAIN_EVERY,
+    now=None,
 ) -> ReplayStats:
-    """Rebuild realtime tables for ``[start, end)`` into ``catalog``."""
+    """Rebuild the tables for ``[start, end)`` into ``catalog``, using
+    ``data_dir`` as the scratch folder for the hour files."""
+    _guard_scratch(data_dir)
     stats = ReplayStats()
-    tables = ensure_tables(catalog)
+    since = 0
+
+    def maintain(force: bool = False) -> None:
+        nonlocal since
+        if not since or maintain_every is None:
+            return
+        if not force and since < maintain_every:
+            return
+        from transit_lakehouse.worker.compact import compact
+
+        done = compact(catalog, now=now)
+        gone = expire(catalog, timedelta(0))
+        log.info(
+            "replay maintenance: %s; expired %d snapshots",
+            done.summary(),
+            sum(gone.values()),
+        )
+        stats.maintenance += 1
+        since = 0
+
     for feed in feeds:
+        if feed.kind == "static_gtfs":
+            _replay_timetables(
+                source, feed, start, end, data_dir, catalog, stats
+            )
+            continue
         if feed.kind not in TABLES_FOR_KIND:
             continue
-        # Seed: the last snapshot of the hour before the window, marked
-        # as already processed so its rows are not written.
-        before = start.replace(minute=0, second=0, microsecond=0)
+        tables = ensure_tables(catalog)
+        names = TABLES_FOR_KIND[feed.kind]
+        mark = min(watermarks(tables[n]).get(feed.name, "") for n in names)
+        first = _resume_from(feed.name, mark, start, end)
+        if first is None:
+            stats.skipped.append(feed.name)
+            log.info("%s: already built to %s", feed.name, mark)
+            continue
+        # Seed: the last snapshot of the hour before, so the first rows
+        # are diffed as the live worker diffed them.
         seed = _extract(
-            source, feed.name, before - timedelta(hours=1), data_dir
+            source, feed.name, first - timedelta(hours=1), data_dir
         )
         if seed:
             seed = _trim_to_readable(data_dir, feed.name, seed)
+        if seed and not mark:
+            # Mark the seed as processed, so its rows are not written.
             marks = {feed.name: seed[-1]}
-            for name in TABLES_FOR_KIND[feed.kind]:
+            for name in names:
                 # An earlier feed's run committed to this table through
                 # its own handle; a stale one makes PyIceberg try to
                 # delete metadata files that are already gone.
                 tables[name].refresh()
                 empty = {f.name: [] for f in tables[name].schema().as_arrow()}
                 commit(name, tables[name], empty, marks)
-        for hour in hours(start, end):
+        for hour in hours(first, end):
             files = _extract(source, feed.name, hour, data_dir)
             if not files:
                 stats.missing_hours.append(_key(feed.name, hour))
                 continue
             run = run_once(data_dir, catalog, [feed])
-            stats.hours += 1
+            # A resumed hour may hold nothing past the watermark.
+            stats.hours += 1 if run.files else 0
             stats.files += run.files
             for name, n in run.rows.items():
                 stats.rows[name] = stats.rows.get(name, 0) + n
             # Keep the next hour's seed: the files from the newest
             # readable one on (D-049), usually just the newest file.
             seed = _trim_to_readable(data_dir, feed.name, seed + files)
+            since += 1
+            maintain()
+    maintain(force=True)
     return stats
+
+
+def _replay_timetables(
+    source: TarSource,
+    feed: Feed,
+    start: datetime,
+    end: datetime,
+    data_dir: Path,
+    catalog: Catalog,
+    stats: ReplayStats,
+) -> None:
+    """Load every timetable zip landed in ``[start, end)``, oldest
+    first, one at a time, deleting each once built. Most hours hold
+    none: a zip lands only when TfNSW publishes a new one."""
+    table = ensure_timetable_tables(catalog)[VERSION_TABLE]
+    mark = watermarks(table).get(TIMETABLE_FEED, "")
+    first = start
+    if mark:
+        first = max(start, _hour_of(mark))
+    for hour in hours(first, end):
+        files = _extract(source, feed.name, hour, data_dir)
+        if not files:
+            continue
+        built = run_timetable(data_dir, catalog, max_versions=None)
+        stats.timetables += len(built)
+        stats.hours += 1 if built else 0
+        for rel in files:
+            (data_dir / rel).unlink(missing_ok=True)
 
 
 def _trim_to_readable(

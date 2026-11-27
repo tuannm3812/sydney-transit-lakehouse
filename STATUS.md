@@ -10,7 +10,7 @@
 
 Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 0 gate about 28 Nov, Phase 1 gate about 2 Dec, Phase 2 gate about 9 Dec, Phase 3 gate about 13 Dec, launch about 20 Dec (was about 10 Jan 2027).
 
-- Gate day (pre-approved runbook, D-043): gate check and R0-02, worker deploy, overnight S3 backfill (D-040). The SSH approval names the commit.
+- Gate day (pre-approved runbook, D-043, D-056): gate check and R0-02, S3 backfill into the live lakehouse, then the worker starts. The SSH approval names the commit.
 - Phase 2's 7-day quality clock starts when the worker goes live (D-039).
 - Spark benchmark: one on-demand day around 3 Dec, outside the Phase 1 gate (D-041).
 - Phase 3 starts now in the cloud on replayed S3 hours (D-042); dashboard with Evidence (D-044).
@@ -71,7 +71,8 @@ Built against tests and captured data while the capture run finishes; nothing is
 - [x] Bus stop-prediction size: stored relative to the trip delay, 29% smaller (D-028)
 - [x] Compaction by closed hour and snapshot expiry, hourly in `run --loop` (D-032); real 8 am hour: its 273 files merged into 4, so the bus tables went from 282 files to 13 (the 3 am hour's few files stay as they are), rows unchanged, 426 MB peak
 - [x] Memory on Linux (Docker, 900 MB cap): realtime about 530 MB, timetable about 737 MB, no OOM
-- [ ] **Gate day, about 28 Nov:** deploy the worker, then the overnight S3 backfill (D-043, D-040)
+- [x] Gate-day backfill ready: replay builds straight into the live lakehouse, oldest first, and resumes after a cut; `scripts/backfill.sh` dry-run in Docker on 27 Nov matches a live-only build (D-056)
+- [ ] **Gate day, about 28 Nov:** S3 backfill into the live lakehouse, then start the worker (runbook in docs/4_next_steps.md, D-043, D-056)
 - [ ] Redpanda + Spark benchmark: one on-demand day around 3 Dec, outside the Phase 1 gate (D-041; Mike starts and stops the instance)
 - [ ] Re-decide the long-term host before the AWS credits run out (D-015)
 
@@ -99,7 +100,8 @@ Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); not
 - [x] Evidence dashboard over a public Parquet extract (D-044, D-045); CI builds it on synthetic data
 - [x] Run on 2 real service days (22 and 23 Nov) from S3 hours: R3-01, `docs/reports/phase3-realdays-20261124.md`. 0.45% of Monday's judged trips missing (161 of 166 at Busways North West; refreshed 25 Nov on D-048, D-052 and D-053), 2,274 bus bunches on D-051 and D-054, no pipeline miss in 40 hand-checked trips; three judging rules fixed (D-047)
 - [x] Mike: verdicts on the two hand-check sheets, all 40 agree (25 Nov)
-- [ ] Replay expires and compacts as it goes (I-20) and the gold window keeps the day before (I-21), before the S3 backfill
+- [x] Replay expires and compacts as it goes (I-20, D-056)
+- [ ] The gold window keeps the day before (I-21)
 - [ ] Trains judged from their trip ids; light rail arrivals (O-04)
 - [ ] Live radar from the latest trip updates (after the worker is live)
 - [ ] Dashboard host and portfolio link (Mike's choice)
