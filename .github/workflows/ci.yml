@@ -57,7 +57,7 @@ jobs:
           python -m tests.test_gold_products data
           python -m transit_lakehouse.gold --data-dir data publish
           python -m transit_lakehouse.gold --data-dir data replay \
-            --day 2026-11-18 --out dashboard/static/replay/data
+            --day 2026-11-18 --out dashboard/static/replay-map-map/data
       - name: Build the dashboard
         working-directory: dashboard
         run: |

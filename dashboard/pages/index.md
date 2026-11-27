@@ -78,27 +78,28 @@ order by trips_judged desc
 
 ```sql by_mode_day
 select
-    service_date,
+    strftime(service_date, '%a %-d %b') as service_day,
     mode_name,
     sum(trips_missing + trips_vanished) / sum(trips_judged) as ghost_share,
     sum(trips_judged) as trips_judged
 from transit.route_honesty
 group by all
-order by service_date, mode_name
+order by min(service_date), mode_name
 ```
 
 <BarChart
   emptySet=pass
   emptyMessage="No data yet"
   data={by_mode_day}
-  x=service_date
+  x=service_day
   y=ghost_share
   series=mode_name
   seriesColors={modeColours}
   type=grouped
   xType=category
   yFmt=pct1
-  title="Share of checked trips that were never seen or vanished, by service day"
+  title="Ghost share by service day"
+  subtitle="Checked trips never seen or vanished"
 />
 
 ## Where to look next

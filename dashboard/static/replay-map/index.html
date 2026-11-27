@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map replay</title>
 <!-- Map replay (Phase 3, D-045). Data: `python -m transit_lakehouse.gold
-     replay --out dashboard/static/replay/data`, one JSON per Sydney hour. -->
+     replay --out dashboard/static/replay-map-map/data`, one JSON per Sydney hour. -->
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <script src="vendor/maplibre-gl.js"></script>
 <script src="vendor/deck.gl.min.js"></script>
@@ -82,10 +82,13 @@ const map = new maplibregl.Map({
   style: {
     version: 8,
     sources: { base: { type: 'raster', tileSize: 256,
-      tiles: ['a', 'b', 'c', 'd'].map(
-        (s) => `https://${s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png`),
-      attribution: '© OpenStreetMap contributors © CARTO' } },
-    layers: [{ id: 'base', type: 'raster', source: 'base' }]
+      // OpenStreetMap's own tiles need no key; CARTO's answered
+      // "API KEY REQUIRED" from a local build (27 Nov 2026).
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      maxzoom: 19,
+      attribution: '© OpenStreetMap contributors' } },
+    layers: [{ id: 'base', type: 'raster', source: 'base',
+      paint: { 'raster-saturation': -0.8, 'raster-opacity': 0.85 } }]
   },
   center: [151.1, -33.87], zoom: 10.5
 });

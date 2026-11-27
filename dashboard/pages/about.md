@@ -24,7 +24,7 @@ This edition covers <Value data={totals} column=service_days /> service days, <V
 
 - **Live feeds**: Transport for NSW's GTFS-realtime vehicle positions and trip updates for buses, Sydney Trains, Metro, Inner West light rail and ferries, and the statewide service alerts. A collector polls vehicle positions every 15 seconds (ferries 30), trip updates every 30 and alerts every 60, and keeps every distinct snapshot, untouched. Buses, trains and metro have been collected since 17 November 2026, light rail and ferries since 18 November.
 - **Timetable**: Transport for NSW's complete static GTFS timetable, fetched as it is republished, so each day is judged against the timetable in effect that day.
-- **Source and licence**: Transport for NSW Open Data Hub, under Creative Commons Attribution 4.0. Map tiles © OpenStreetMap contributors and © CARTO.
+- **Source and licence**: Transport for NSW Open Data Hub, under Creative Commons Attribution 4.0. Map tiles © OpenStreetMap contributors.
 
 ## How it is built
 

@@ -8,7 +8,7 @@
     python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
     python -m transit_lakehouse.gold publish           # dashboard extract
     python -m transit_lakehouse.gold replay --day 2026-11-24 \\
-        --out dashboard/static/replay/data
+        --out dashboard/static/replay-map-map/data
 
 Reads the lakehouse under ``DATA_DIR`` (as the worker writes it) and
 writes ``DATA_DIR/gold/transit.duckdb``. dbt's target and logs go under

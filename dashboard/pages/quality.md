@@ -36,12 +36,42 @@ order by service_date desc, mode_name
   <Column id=match_share title="Matched" fmt=pct1 />
 </DataTable>
 
+## Checks that failed
+
+```sql failed
+select node as check_name, failures as failing_rows
+from transit.quality
+where status not in ('pass', 'success')
+order by node
+```
+
+{#if failed.length > 0}
+
+<DataTable data={failed}>
+  <Column id=check_name title="Check" wrap=true />
+  <Column id=failing_rows title="Failing rows" fmt=num0 />
+</DataTable>
+
+A check can fail on a day the site does not show: each build starts a day early and the first day is only partly captured, so its few trips can miss a threshold.
+
+{:else}
+
+Every check in the last build passed.
+
+{/if}
+
 ## Every check in the last build
 
 ```sql checks
-select resource_type as kind, node, status, failures, seconds
+select status, resource_type as kind, node, failures, seconds
 from transit.quality
-order by status <> 'pass' desc, kind, node
+order by status not in ('pass', 'success') desc, kind desc, node
 ```
 
-<DataTable data={checks} emptySet=pass emptyMessage="No rows for this selection yet" rows=50 search=true />
+<DataTable data={checks} emptySet=pass emptyMessage="No checks recorded" rows=50 search=true>
+  <Column id=status />
+  <Column id=kind />
+  <Column id=node title="Check or table" wrap=true />
+  <Column id=failures title="Failing rows" fmt=num0 />
+  <Column id=seconds fmt=num1 />
+</DataTable>

@@ -55,6 +55,8 @@ having sum(headways) >= 10 and sum(bunched) >= 3
   startingLat={-33.87}
   startingLong={151.1}
   startingZoom={10}
+  basemap="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  attribution="© OpenStreetMap contributors"
   height={520}
   title="Where gaps are bunched"
   tooltipType=hover
