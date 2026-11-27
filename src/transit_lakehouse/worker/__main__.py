@@ -12,6 +12,11 @@
     python -m transit_lakehouse.worker verify --other /tmp/r \\
         --feed buses_tripupdates --start 2026-11-17T00 --end 2026-11-18T00
 
+    # gate-day backfill into the live lakehouse (D-040, docs/9_phase1.md)
+    python -m transit_lakehouse.worker --data-dir /data replay \\
+        --bucket B --scratch /data/backfill --start 2026-11-17T06 \\
+        --end 2026-11-27T21
+
 Reads ``DATA_DIR`` (raw snapshots in, ``lakehouse/`` out) and
 ``FEEDS_CONFIG``. Needs no TfNSW key: it never calls the API.
 """
@@ -29,6 +34,7 @@ import pyarrow as pa
 
 from transit_lakehouse.checks.manifest import parse_window
 from transit_lakehouse.collector.config import load_feeds
+from transit_lakehouse.worker.replay import MAINTAIN_EVERY
 from transit_lakehouse.worker.runner import (
     DEFAULT_MAX_ROWS,
     expire,
@@ -71,18 +77,33 @@ def _replay_or_verify(args, catalog, feeds) -> int:
             + ("" if diffs else ": identical")
         )
         return 1 if diffs else 0
+    scratch = args.scratch or args.data_dir
     if args.bucket:
         import boto3  # the offload extra; credentials from the role
 
         source = rp.S3Tars(boto3.client("s3"), args.bucket)
     else:
         source = rp.LocalTars(args.tars)
+    scratch.mkdir(parents=True, exist_ok=True)
+    # The lock sits with the lakehouse, so a backfill into the live one
+    # and the live worker can never run at once.
     with single_run(args.data_dir):
-        stats = rp.replay(source, feeds, start, end, args.data_dir, catalog)
+        stats = rp.replay(
+            source,
+            feeds,
+            start,
+            end,
+            scratch,
+            catalog,
+            maintain_every=args.maintain_every or None,
+        )
     print(
-        f"replayed {stats.hours} hours, {stats.files} files: "
+        f"replayed {stats.hours} hours, {stats.files} files, "
+        f"{stats.timetables} timetables, {stats.maintenance} compactions: "
         + ", ".join(f"{k} +{v:,}" for k, v in stats.rows.items() if v)
     )
+    for name in stats.skipped:
+        print(f"skipped {name}: already built to the end")
     for key in stats.missing_hours:
         print(f"missing {key}")
     return 0
@@ -128,12 +149,34 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument(
         "--tars", type=Path, help="folder laid out like the bucket"
     )
+    rep.add_argument(
+        "--scratch",
+        type=Path,
+        help="folder for the hour files (default --data-dir); never the "
+        "collector's data folder",
+    )
+    rep.add_argument(
+        "--maintain-every",
+        type=int,
+        default=MAINTAIN_EVERY,
+        help="compact and expire after this many hours (0: only at the "
+        "end), I-20",
+    )
+    rep.add_argument(
+        "--feed", action="append", help="default: every enabled feed"
+    )
+    rep.add_argument(
+        "--exclude-feed",
+        action="append",
+        default=[],
+        help="leave these out (e.g. static_gtfs, loaded on its own)",
+    )
     ver = sub.add_parser(
         "verify", help="compare --data-dir's tables with --other's"
     )
     ver.add_argument("--other", type=Path, required=True)
+    ver.add_argument("--feed", action="append", required=True)
     for p in (rep, ver):
-        p.add_argument("--feed", action="append", required=True)
         p.add_argument(
             "--start", required=True, help="UTC hour, 2026-11-17T21"
         )
@@ -168,6 +211,9 @@ def main(argv: list[str] | None = None) -> int:
     feeds = list(load_feeds(args.feeds))
     if args.feed:
         feeds = [f for f in feeds if f.name in set(args.feed)]
+    feeds = [
+        f for f in feeds if f.name not in getattr(args, "exclude_feed", [])
+    ]
 
     if args.cmd in ("replay", "verify"):
         return _replay_or_verify(args, catalog, feeds)
