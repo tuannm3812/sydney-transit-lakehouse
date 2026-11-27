@@ -93,8 +93,13 @@ const map = new maplibregl.Map({
     layers: [{ id: 'base', type: 'raster', source: 'base',
       paint: { 'raster-saturation': -0.8, 'raster-opacity': 0.85 } }]
   },
-  center: [151.1, -33.87], zoom: 10.5
+  center: [151.1, -33.87], zoom: 10.5,
+  // The control panel covers the bottom edge, so the OpenStreetMap
+  // credit (required) goes top-left.
+  attributionControl: false
 });
+map.addControl(new maplibregl.AttributionControl({ compact: false }),
+  'top-left');
 const overlay = new deck.MapboxOverlay({ layers: [] });
 map.addControl(overlay);
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
