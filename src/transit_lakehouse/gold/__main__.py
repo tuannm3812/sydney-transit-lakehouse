@@ -153,7 +153,8 @@ def run_publish(args: argparse.Namespace) -> int:
     db = gold_paths(args.data_dir)["db"]
     out = args.out or gold_paths(args.data_dir)["root"] / "public"
     with duckdb.connect(str(db), read_only=True) as con:
-        for name, n in publish.publish(con, out).items():
+        rows = publish.publish(con, out, args.date_from, args.date_to)
+        for name, n in rows.items():
             print(f"{name}: {n} rows")
     return 0
 
@@ -202,6 +203,18 @@ def main(argv: list[str] | None = None) -> int:
     h.add_argument("--out", type=Path)
     pub = sub.add_parser("publish", help="the dashboard's public extract")
     pub.add_argument("--out", type=Path, help="default DATA_DIR/gold/public")
+    pub.add_argument(
+        "--from",
+        dest="date_from",
+        type=date.fromisoformat,
+        help="first service day to publish (dated tables)",
+    )
+    pub.add_argument(
+        "--to",
+        dest="date_to",
+        type=date.fromisoformat,
+        help="last service day to publish (dated tables)",
+    )
     r = sub.add_parser("replay", help="map replay files for the dashboard")
     r.add_argument(
         "--day",

@@ -411,6 +411,24 @@ def test_publish_writes_only_the_public_tables(
     assert kinds == ["missing", "vanished"]
 
 
+def test_publish_window_drops_edge_days(db: Path, tmp_path: Path) -> None:
+    # A build's first and last days are only partly captured; the site
+    # publishes complete days only. Undated tables are kept whole.
+    out = tmp_path / "public"
+    with duckdb.connect(str(db)) as con:
+        inside = publish.publish(
+            con, out, date(2026, 11, 18), date(2026, 11, 18)
+        )
+        after = publish.publish(con, tmp_path / "after", date(2026, 11, 19))
+    assert inside["ghost_trips"] == 3
+    assert inside["service_days"] == 1
+    assert after["ghost_trips"] == 0
+    assert after["service_days"] == 0
+    assert after["bunching_events"] == 0
+    assert after["quality"] == inside["quality"] > 0
+    assert after["bunching_hotspots"] == inside["bunching_hotspots"]
+
+
 def test_bunching_by_hour_keeps_every_gap(db: Path, tmp_path: Path) -> None:
     # The hot-spot map drops stop-hours with fewer than 3 gaps; the
     # by-hour chart must not, or quiet routes vanish from it (D-051).
