@@ -39,6 +39,7 @@ Iceberg, so a whole day fits in the worker's memory.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import tarfile
@@ -185,29 +186,81 @@ def _hour_of(rel: str) -> datetime:
     ).replace(tzinfo=UTC)
 
 
-def _resume_from(
-    feed: str, mark: str, start: datetime, end: datetime
-) -> datetime | None:
-    """The first hour to build for a feed whose tables hold ``mark``
-    (their lowest watermark, "" when empty). None: nothing left.
+def _state_path(scratch: Path, feed: str) -> Path:
+    return scratch / "replay-state" / f"{feed}.json"
 
-    A watermark in the hour before ``start`` chains on at ``start``.
-    Any other watermark wins over ``start``: inside the window (a cut
-    run) the feed resumes in the watermark's hour, and before it the
-    replay starts there instead, so the history never gets a hole."""
-    if not mark:
-        return start
-    at = _hour_of(mark)
-    first = start if at == start - timedelta(hours=1) else at
+
+def _load_state(scratch: Path, feed: str) -> dict:
+    try:
+        return json.loads(_state_path(scratch, feed).read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_state(scratch: Path, feed: str, state: dict) -> None:
+    path = _state_path(scratch, feed)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(path)
+
+
+def _feed_marks(tables, names, feed: str) -> dict[str, str]:
+    return {n: watermarks(tables[n]).get(feed, "") for n in names}
+
+
+def _plan_feed(
+    feed: str,
+    marks: dict[str, str],
+    state: dict,
+    scratch: Path,
+    start: datetime,
+) -> tuple[datetime, bool]:
+    """Where a feed's replay starts, from its tables' watermarks and the
+    scratch folder's record of the last hour it finished. Returns the
+    first hour and whether the hour before it must be fetched as the
+    seed.
+
+    - No table has a watermark: a fresh start at ``start``.
+    - The lowest watermark is the one recorded when an hour finished,
+      and its file is still in the scratch folder: carry on with the
+      next hour, seeded from that file (no download).
+    - Anything else (a run cut mid-hour, a table behind the others, a
+      lost scratch folder): fetch the lowest watermark's hour again, so
+      every file after it is built. A table with no watermark at all
+      while the others have one restarts from the recorded first hour.
+
+    The watermark wins over ``start`` whenever it has one, so the
+    history never gets a hole (D-056)."""
+    low, high = min(marks.values()), max(marks.values())
+    if not high:
+        return start, True
+    if low and state.get("mark") == low and (scratch / low).exists():
+        first = _parse(state["done"]) + timedelta(hours=1)
+        refetch = False
+    elif low:
+        first, refetch = _hour_of(low), True
+    elif "first" in state:
+        first, refetch = _parse(state["first"]), True
+    else:
+        raise ValueError(
+            f"{feed}: some tables have no watermark and the scratch "
+            "folder has no record of where this feed's replay began; "
+            "rebuild the lakehouse"
+        )
     if first < start:
         log.warning(
             "%s: the tables end at %s, so replay starts at %s, not %s",
             feed,
-            mark,
+            low or "(empty)",
             f"{first:%Y-%m-%dT%H}",
             f"{start:%Y-%m-%dT%H}",
         )
-    return first if first < end else None
+    return first, refetch
+
+
+def _parse(hour: str) -> datetime:
+    return datetime.strptime(hour, "%Y-%m-%dT%H").replace(tzinfo=UTC)
 
 
 def _guard_scratch(scratch: Path) -> None:
@@ -239,9 +292,10 @@ def replay(
 
     def maintain(force: bool = False) -> None:
         nonlocal since
+        # None: never; 0: only at the end; n: every n built hours.
         if not since or maintain_every is None:
             return
-        if not force and since < maintain_every:
+        if not force and (maintain_every <= 0 or since < maintain_every):
             return
         from transit_lakehouse.worker.compact import compact
 
@@ -265,44 +319,62 @@ def replay(
             continue
         tables = ensure_tables(catalog)
         names = TABLES_FOR_KIND[feed.kind]
-        mark = min(watermarks(tables[n]).get(feed.name, "") for n in names)
-        first = _resume_from(feed.name, mark, start, end)
-        if first is None:
+        marks = _feed_marks(tables, names, feed.name)
+        state = _load_state(data_dir, feed.name)
+        first, refetch = _plan_feed(feed.name, marks, state, data_dir, start)
+        if first >= end:
             stats.skipped.append(feed.name)
-            log.info("%s: already built to %s", feed.name, mark)
+            log.info("%s: already built to %s", feed.name, min(marks.values()))
             continue
-        # Seed: the last snapshot of the hour before, so the first rows
-        # are diffed as the live worker diffed them.
-        seed = _extract(
-            source, feed.name, first - timedelta(hours=1), data_dir
-        )
-        if seed:
-            seed = _trim_to_readable(data_dir, feed.name, seed)
-        if seed and not mark:
-            # Mark the seed as processed, so its rows are not written.
-            marks = {feed.name: seed[-1]}
+        seed: list[str] = []
+        if refetch:
+            # Seed: the last snapshot of the hour before, so the first
+            # rows are diffed as the live worker diffed them.
+            seed = _extract(
+                source, feed.name, first - timedelta(hours=1), data_dir
+            )
+            if seed:
+                seed = _trim_to_readable(data_dir, feed.name, seed)
+        elif min(marks.values()):
+            seed = [min(marks.values())]
+        if not max(marks.values()):
+            state = {"first": f"{first:%Y-%m-%dT%H}"}
+            _save_state(data_dir, feed.name, state)
+        if seed and any(not m for m in marks.values()):
+            # Mark the seed as processed in every table that has no
+            # watermark yet, so its rows are not written.
             for name in names:
+                if marks[name]:
+                    continue
                 # An earlier feed's run committed to this table through
                 # its own handle; a stale one makes PyIceberg try to
                 # delete metadata files that are already gone.
                 tables[name].refresh()
                 empty = {f.name: [] for f in tables[name].schema().as_arrow()}
-                commit(name, tables[name], empty, marks)
+                commit(name, tables[name], empty, {feed.name: seed[-1]})
         for hour in hours(first, end):
             files = _extract(source, feed.name, hour, data_dir)
             if not files:
                 stats.missing_hours.append(_key(feed.name, hour))
                 continue
             run = run_once(data_dir, catalog, [feed])
-            # A resumed hour may hold nothing past the watermark.
-            stats.hours += 1 if run.files else 0
+            if run.files:
+                # A refetched hour may hold nothing past the watermark.
+                stats.hours += 1
+                since += 1
             stats.files += run.files
             for name, n in run.rows.items():
                 stats.rows[name] = stats.rows.get(name, 0) + n
             # Keep the next hour's seed: the files from the newest
             # readable one on (D-049), usually just the newest file.
             seed = _trim_to_readable(data_dir, feed.name, seed + files)
-            since += 1
+            done = _feed_marks(ensure_tables(catalog), names, feed.name)
+            state = {
+                **state,
+                "done": f"{hour:%Y-%m-%dT%H}",
+                "mark": min(done.values()),
+            }
+            _save_state(data_dir, feed.name, state)
             maintain()
     maintain(force=True)
     return stats
@@ -322,9 +394,9 @@ def _replay_timetables(
     none: a zip lands only when TfNSW publishes a new one."""
     table = ensure_timetable_tables(catalog)[VERSION_TABLE]
     mark = watermarks(table).get(TIMETABLE_FEED, "")
-    first = start
-    if mark:
-        first = max(start, _hour_of(mark))
+    # As for the realtime feeds, the watermark wins over ``start``, so
+    # no publish between the last run and this one is skipped (D-056).
+    first = _hour_of(mark) if mark else start
     for hour in hours(first, end):
         files = _extract(source, feed.name, hour, data_dir)
         if not files:

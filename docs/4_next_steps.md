@@ -41,7 +41,7 @@ nohup scripts/backfill.sh 2026-11-17T06 > /dev/null 2>&1 &
 tail -f docs/reports/backfill.log
 ```
 
-The script loads every timetable published since 17 Nov 06:00 UTC, then replays the realtime feeds one UTC day at a time, oldest first, straight into `data/lakehouse/`, using `data/backfill/` for the hour files. It goes up to the last hour the offload has shipped, then catches up on the hours shipped while it ran, so the worker starts with about an hour of backlog. It compacts and expires every 6 hours of replay (I-20) and runs under the worker's 900 MB cap. Before each day it reads the live watch state and stops if a feed or disk alert is open (exit 3); stopping loses nothing, since the same command resumes every feed after its watermark. It takes the live worker's lock, so the two cannot run at once. The 23 Nov rehearsal replayed one hour of 11 feeds in 130 s, so about 255 hours take 9 to 10 hours. "missing" lines are expected for hours a feed was not yet enabled (light rail and ferries before 18 Nov 07:44 UTC) and for empty hours of outages. Disk: the tables are expected to stay well under 15 GB, and the watch alerts below 10 GB free.
+The script loads every timetable published since 17 Nov 06:00 UTC, then replays the realtime feeds one UTC day at a time, oldest first, straight into `data/lakehouse/`, using `data/backfill/` for the hour files. It goes up to the last hour the offload has shipped, then catches up on the hours shipped while it ran, so the worker starts with about an hour of backlog. It compacts and expires every 6 hours of replay (I-20) and runs under the worker's 900 MB cap. Before each day it reads the live watch state and stops if a feed or disk alert is open (exit 3); stopping loses nothing, since the same command resumes every feed after its watermark, even when it stopped in the middle of an hour (`data/backfill/replay-state/` records the last finished hour per feed; keep that folder until the worker is live). It takes the live worker's lock, so the two cannot run at once. The 23 Nov rehearsal replayed one hour of 11 feeds in 130 s, so about 255 hours take 9 to 10 hours. "missing" lines are expected for hours a feed was not yet enabled (light rail and ferries before 18 Nov 07:44 UTC) and for empty hours of outages. Disk: the tables are expected to stay well under 15 GB, and the watch alerts below 10 GB free.
 
 **4. Start the live worker** once the log says `backfill done`:
 
@@ -52,7 +52,7 @@ docker compose --profile worker run --rm --no-deps worker status
 free -m && docker compose ps
 ```
 
-It carries on from the backfill's watermarks with the local raw files (the prune keeps 3 days), so the last backfilled hour and the first live one join without a gap. Then turn on the nightly gold build (D-039), never at the same time as a backfill.
+It carries on from the backfill's watermarks with the local raw files (the prune keeps 3 days), so the last backfilled hour and the first live one join without a gap. Then turn on the nightly gold build (D-039), never at the same time as a backfill. Until I-21 is fixed it builds without a service-date window; a full-history build under the 900 MB cap has not been measured yet, so watch the first one.
 
 **Undo.** `docker compose --profile worker stop worker` stops the worker and leaves the collector alone. Raw files and S3 are never changed by steps 3 and 4. A bad build is redone by stopping the worker and deleting `data/lakehouse/` and `data/backfill/` (a delete on the server, so it needs its own approval), then step 3 again.
 
