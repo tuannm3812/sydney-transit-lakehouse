@@ -23,7 +23,8 @@
   #map { position: absolute; inset: 0; }
   .panel { position: absolute; left: 12px; right: 12px; bottom: 12px;
     background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+    border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px;
+    z-index: 2; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   select, button { font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
@@ -208,6 +209,8 @@ async function loadDay(day) {
 async function start() {
   const legend = $('legend');
   for (const [m, c] of Object.entries(MODES)) {
+    // Modes not collected yet share the grey; leave them off the key.
+    if (m === 'nswtrains' || m === 'coach') continue;
     const s = document.createElement('span');
     s.style.setProperty('--c', `rgb(${c.join(',')})`);
     s.textContent = NAMES[m]; legend.appendChild(s);

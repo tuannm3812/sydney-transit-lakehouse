@@ -63,9 +63,12 @@ Every check in the last build passed.
 ## Every check in the last build
 
 ```sql checks
-select status, resource_type as kind, node, failures, seconds
+select
+    case when status in ('pass', 'success') then 'passed' else status end
+        as status,
+    resource_type as kind, node, failures, seconds
 from transit.quality
-order by status not in ('pass', 'success') desc, kind desc, node
+order by status <> 'passed' desc, kind desc, node
 ```
 
 <DataTable data={checks} emptySet=pass emptyMessage="No checks recorded" rows=50 search=true>

@@ -92,6 +92,7 @@ order by min(service_date), mode_name
   emptyMessage="No data yet"
   data={by_mode_day}
   x=service_day
+  sort=false
   y=ghost_share
   series=mode_name
   seriesColors={modeColours}
