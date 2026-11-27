@@ -95,7 +95,7 @@ def _replay_or_verify(args, catalog, feeds) -> int:
             end,
             scratch,
             catalog,
-            maintain_every=args.maintain_every or None,
+            maintain_every=args.maintain_every,
         )
     print(
         f"replayed {stats.hours} hours, {stats.files} files, "

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 import shutil
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 
@@ -165,12 +166,12 @@ def test_backfill_never_leaves_a_hole(setup) -> None:
     catalog = open_catalog(server, env={})
     src, scratch = rp.LocalTars(bucket), server / "backfill"
     start, end = T0 + timedelta(hours=1), T0 + timedelta(hours=HOURS)
-    rp.replay(
-        src, REALTIME, start, start + timedelta(hours=1), scratch, catalog
-    )
-    rp.replay(src, REALTIME, end - timedelta(hours=1), end, scratch, catalog)
+    rp.replay(src, FEEDS, start, start + timedelta(hours=1), scratch, catalog)
+    rp.replay(src, FEEDS, end - timedelta(hours=1), end, scratch, catalog)
     _, diffs = rp.verify(reference, catalog, REALTIME, start, end)
     assert diffs == []
+    # The 2.5 h timetable publish, inside the skipped stretch, is loaded.
+    assert _versions(catalog) == _versions(reference)
 
 
 def test_replay_refuses_the_collectors_data_folder(setup) -> None:
@@ -213,3 +214,103 @@ def test_cli_backfill_into_the_live_lakehouse(setup, capsys) -> None:
     assert main(args) == 0
     out = capsys.readouterr().out
     assert "2 timetables" in out and "missing" not in out
+
+
+class _CutError(Exception):
+    pass
+
+
+def _resume_and_check(setup, cut, restart_at, first_at=1) -> None:
+    """Cut a backfill with ``cut`` in place, run it again from
+    ``restart_at`` hours after T0 and compare with the live-only build."""
+    live, bucket, server = setup
+    reference = _reference(live)
+    catalog = open_catalog(server, env={})
+    src, scratch = rp.LocalTars(bucket), server / "backfill"
+    start = T0 + timedelta(hours=first_at)
+    end = T0 + timedelta(hours=HOURS)
+    with cut(), pytest.raises(_CutError):
+        rp.replay(src, REALTIME, start, end, scratch, catalog)
+    rp.replay(
+        src,
+        REALTIME,
+        T0 + timedelta(hours=restart_at),
+        end,
+        scratch,
+        catalog,
+    )
+    # The cut lands in the first feed; the others had not started, so a
+    # later start is a fresh start for them.
+    _, diffs = rp.verify(reference, catalog, [TU_FEED], start, end)
+    assert diffs == []
+
+
+@pytest.mark.parametrize("restart_at", [1, 3])
+def test_resume_after_a_cut_in_the_middle_of_an_hour(
+    setup, monkeypatch, restart_at
+) -> None:
+    """Review of PR 46, finding 1: the run stops after 5 files of the
+    second hour, and the next run starts at the original start or at the
+    hour after the cut one."""
+    real = rp.run_once
+    calls = {"n": 0}
+
+    @contextmanager
+    def cut():
+        def partial(data_dir, catalog, feeds, **kw):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                real(data_dir, catalog, feeds, max_files=5)
+                raise _CutError
+            return real(data_dir, catalog, feeds, **kw)
+
+        monkeypatch.setattr(rp, "run_once", partial)
+        yield
+        monkeypatch.setattr(rp, "run_once", real)
+
+    _resume_and_check(setup, cut, restart_at)
+
+
+@pytest.mark.parametrize("restart_at", [1, 3])
+def test_resume_when_one_table_is_behind(
+    setup, monkeypatch, restart_at
+) -> None:
+    """Review of PR 46, finding 2: in the very first hour, with no seed
+    hour before it (as on 17 Nov, when the collector started), the rows
+    land in one table and the run stops before the others commit."""
+    from transit_lakehouse.worker import runner
+
+    real = runner.commit
+
+    landed = []
+
+    @contextmanager
+    def cut():
+        def flaky(name, table, cols, marks):
+            if any(len(v) for v in cols.values()):
+                if landed:  # the first table with rows commits, no more
+                    raise _CutError
+                landed.append(name)
+            return real(name, table, cols, marks)
+
+        monkeypatch.setattr(runner, "commit", flaky)
+        yield
+        monkeypatch.setattr(runner, "commit", real)
+
+    _resume_and_check(setup, cut, restart_at, first_at=0)
+    assert len(landed) == 1
+
+
+def test_maintain_every_zero_still_maintains_at_the_end(setup) -> None:
+    """Review of PR 46, finding 4."""
+    _, bucket, server = setup
+    stats = rp.replay(
+        rp.LocalTars(bucket),
+        REALTIME,
+        T0 + timedelta(hours=1),
+        T0 + timedelta(hours=3),
+        server / "backfill",
+        open_catalog(server, env={}),
+        maintain_every=0,
+    )
+    assert stats.maintenance == 1

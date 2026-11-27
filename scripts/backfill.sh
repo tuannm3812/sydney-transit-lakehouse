@@ -28,7 +28,7 @@ START=${1:?start hour, e.g. 2026-11-17T06}
 FOLLOW=0
 shipped() { date -u -d '-1 hour' +%Y-%m-%dT%H; }  # hours before are in S3
 if [ -n "${2:-}" ]; then END=$2; else END=$(shipped); FOLLOW=1; fi
-BUCKET=${OFFLOAD_BUCKET:-$(grep -E '^OFFLOAD_BUCKET=' .env | cut -d= -f2-)}
+BUCKET=${OFFLOAD_BUCKET:-$(grep -E '^OFFLOAD_BUCKET=' .env 2>/dev/null | cut -d= -f2- || true)}
 STATE=docs/reports/watch-state.json
 LOG=docs/reports/backfill.log
 
