@@ -95,10 +95,11 @@ const map = new maplibregl.Map({
   },
   center: [151.1, -33.87], zoom: 10.5,
   // The control panel covers the bottom edge, so the OpenStreetMap
-  // credit (required) goes top-left.
+  // credit (required) goes top-left, compact so it does not cover
+  // the vehicles.
   attributionControl: false
 });
-map.addControl(new maplibregl.AttributionControl({ compact: false }),
+map.addControl(new maplibregl.AttributionControl({ compact: true }),
   'top-left');
 const overlay = new deck.MapboxOverlay({ layers: [] });
 map.addControl(overlay);

@@ -37,7 +37,9 @@ select
     sum(trips_missing) as trips_missing,
     sum(trips_missing) / sum(trips_judged) as missing_share,
     sum(trips_vanished) as trips_vanished,
-    sum(trips_vanished) / sum(trips_judged) as vanished_share
+    sum(trips_vanished) / sum(trips_judged) as vanished_share,
+    strftime(min(service_date), '%a %-d %b') as first_label,
+    strftime(max(service_date), '%a %-d %b %Y') as last_label
 from transit.service_days
 ```
 
@@ -53,7 +55,9 @@ select
     route_short_name as route,
     agency_name as operator,
     sum(trips_missing + trips_vanished) as ghosts,
-    sum(trips_judged) as checked
+    sum(trips_judged) as checked,
+    format('{:,}', sum(trips_missing + trips_vanished)::bigint) as ghosts_label,
+    format('{:,}', sum(trips_judged)::bigint) as checked_label
 from transit.route_honesty
 group by all
 having sum(trips_judged) >= 10
@@ -87,11 +91,11 @@ limit 1
 </div>
 
 {#if worst_route.length > 0 && worst_route[0].ghosts > 0}
-<p>The route that lost the most trips was <b>route <Value data={worst_route} column=route /></b> (<Value data={worst_route} column=operator />): <Value data={worst_route} column=ghosts fmt=num0 /> of its <Value data={worst_route} column=checked fmt=num0 /> checked trips never showed up or vanished. See <a href="/ghosts">Ghost trips</a> for every route.</p>
+<p>The route that lost the most trips was <b>route {worst_route[0].route}</b>, run by {worst_route[0].operator}: {worst_route[0].ghosts_label} of its {worst_route[0].checked_label} checked trips never showed up or vanished. See <a href="/ghosts">Ghost trips</a> for every route.</p>
 {/if}
 
 {#if totals[0].service_days < 7}
-<p class="notice"><b>Early results.</b> This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="ddd d mmm" /> to <Value data={totals} column=last_day fmt="ddd d mmm yyyy" />, rebuilt from the raw archive. A few days are not a pattern, so treat route rankings as leads, not verdicts.</p>
+<p class="notice"><b>Early results.</b> This edition covers {totals[0].service_days} service days, {totals[0].first_label} to {totals[0].last_label}, rebuilt from the raw archive. A few days are not a pattern, so treat route rankings as leads, not verdicts.</p>
 {/if}
 
 {/if}

@@ -93,12 +93,12 @@ limit 50
 
 <DataTable data={routes} emptySet=pass emptyMessage="No route lost a trip in this selection" rows=15 search=true>
   <Column id=mode_name title="Mode" />
-  <Column id=route />
-  <Column id=operator />
-  <Column id=trips_checked fmt=num0 />
-  <Column id=never_seen fmt=num0 />
-  <Column id=never_seen_high_confidence title="Never seen, high confidence" fmt=num0 />
-  <Column id=vanished fmt=num0 />
+  <Column id=route title="Route" />
+  <Column id=operator title="Operator" />
+  <Column id=trips_checked title="Checked" fmt=num0 />
+  <Column id=never_seen title="Never seen" fmt=num0 />
+  <Column id=never_seen_high_confidence title="Of which high confidence" fmt=num0 />
+  <Column id=vanished title="Vanished" fmt=num0 />
   <Column id=ghost_share title="Ghost share" fmt=pct1 contentType=colorscale />
 </DataTable>
 
@@ -122,8 +122,8 @@ order by trips_checked desc
 
 <DataTable data={operators} emptySet=pass emptyMessage="No rows for this selection" rows=20>
   <Column id=mode_name title="Mode" />
-  <Column id=operator />
-  <Column id=trips_checked fmt=num0 />
+  <Column id=operator title="Operator" />
+  <Column id=trips_checked title="Checked" fmt=num0 />
   <Column id=ran_share title="Ran" fmt=pct1 />
   <Column id=never_seen_share title="Never seen" fmt=pct2 />
   <Column id=vanished_share title="Vanished" fmt=pct2 />
@@ -156,13 +156,13 @@ order by service_date desc, due
 
 <DataTable data={trips} emptySet=pass emptyMessage="No ghost trips for this selection" rows=25 search=true>
   <Column id=service_date title="Day" />
-  <Column id=due />
-  <Column id=mode />
-  <Column id=route />
-  <Column id=towards />
-  <Column id=operator />
-  <Column id=kind />
-  <Column id=confidence />
+  <Column id=due title="Due" />
+  <Column id=mode title="Mode" />
+  <Column id=route title="Route" />
+  <Column id=towards title="Towards" />
+  <Column id=operator title="Operator" />
+  <Column id=kind title="Kind" />
+  <Column id=confidence title="Confidence" />
   <Column id=stops_done title="Stops passed" fmt=num0 />
   <Column id=stop_count title="Stops" fmt=num0 />
   <Column id=trip_id title="Trip id" />

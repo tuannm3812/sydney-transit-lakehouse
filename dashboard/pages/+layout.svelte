@@ -17,6 +17,7 @@
 	githubRepo="https://github.com/tuannm3812/sydney-transit-lakehouse"
 	homePageName="Overview"
 	maxWidth={1180}
+	hideTOC={true}
 >
 	<slot slot="content" />
 </EvidenceDefaultLayout>
@@ -128,9 +129,18 @@
 	/* The headline figures: one row of equal cards. */
 	:global(.figures) {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 0.75rem;
 		margin: 1.25rem 0 0.5rem;
+	}
+	:global(.figures.three) {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+	@media (max-width: 760px) {
+		:global(.figures),
+		:global(.figures.three) {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
 	}
 	:global(.figure) {
 		display: grid;
@@ -259,8 +269,7 @@
 	}
 
 	/* Every table that could outgrow a phone scrolls in its own box. */
-	:global(.markdown .table-container),
-	:global(.markdown div:has(> table)) {
+	:global(.markdown .table-container) {
 		overflow-x: auto;
 		max-width: 100%;
 	}

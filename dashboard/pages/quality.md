@@ -19,7 +19,7 @@ select
 from transit.quality
 ```
 
-<div class="figures">
+<div class="figures three">
   <div class="figure lead">
     <span class="label">Checks passed</span>
     <span class="value"><Value data={summary} column=tests_passed fmt=num0 /></span>
@@ -46,10 +46,10 @@ order by service_date desc, mode_name
 ```
 
 <DataTable data={match} emptySet=pass emptyMessage="No rows for this selection yet" rows=20>
-  <Column id=service_date />
+  <Column id=service_date title="Day" />
   <Column id=mode_name title="Mode" />
-  <Column id=realtime_trips fmt=num0 />
-  <Column id=matched_trips fmt=num0 />
+  <Column id=realtime_trips title="Live trips" fmt=num0 />
+  <Column id=matched_trips title="Matched trips" fmt=num0 />
   <Column id=match_share title="Matched" fmt=pct1 />
 </DataTable>
 
@@ -81,17 +81,18 @@ Every check in the last build passed.
 
 ```sql checks
 select
-    case when status in ('pass', 'success') then 'passed' else status end
+    case when status in ('pass', 'success') then 'passed'
+        else '✕ ' || upper(status) end
         as status,
     resource_type as kind, node, failures, seconds
 from transit.quality
-order by status <> 'passed' desc, kind desc, node
+order by status = 'passed', kind desc, node
 ```
 
 <DataTable data={checks} emptySet=pass emptyMessage="No checks recorded" rows=50 search=true>
-  <Column id=status />
-  <Column id=kind />
+  <Column id=status title="Result" />
+  <Column id=kind title="Kind" />
   <Column id=node title="Check or table" wrap=true />
   <Column id=failures title="Failing rows" fmt=num0 />
-  <Column id=seconds fmt=num1 />
+  <Column id=seconds title="Seconds" fmt=num1 />
 </DataTable>

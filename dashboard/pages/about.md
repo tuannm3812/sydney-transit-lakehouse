@@ -9,12 +9,18 @@ select
     min(service_date) as first_day,
     max(service_date) as last_day,
     count(*) as service_days,
-    sum(trips_judged) as trips_judged
+    sum(trips_judged) as trips_judged,
+    strftime(min(service_date), '%-d %b %Y') as first_label,
+    strftime(max(service_date), '%-d %b %Y') as last_label,
+    format('{:,}', sum(trips_judged)::bigint) as judged_label
 from transit.service_days
 ```
 
 ```sql build
-select max(run_at) as built_at from transit.quality
+select
+    max(run_at) as built_at,
+    strftime(max(run_at)::timestamp, '%-d %b %Y') as built_label
+from transit.quality
 ```
 
 <div class="lede">
@@ -23,7 +29,9 @@ select max(run_at) as built_at from transit.quality
   <p class="context">When the timetable says a trip runs, does the live feed show it running, and do the vehicles keep their spacing? This is an independent data engineering project, not an official Transport for NSW service. For journey planning, use Transport for NSW's own apps.</p>
 </div>
 
-This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="d mmm yyyy" /> to <Value data={totals} column=last_day fmt="d mmm yyyy" />, and <Value data={totals} column=trips_judged fmt=num0 /> checked trips. It was built on <Value data={build} column=built_at fmt="d mmm yyyy" /> (UTC).
+{#if totals.length > 0 && totals[0].service_days > 0}
+This edition covers {totals[0].service_days} service days, {totals[0].first_label} to {totals[0].last_label}, and {totals[0].judged_label} checked trips. It was built on {build[0].built_label} (UTC).
+{/if}
 
 ## The data
 
