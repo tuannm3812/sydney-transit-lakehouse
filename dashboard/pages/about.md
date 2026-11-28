@@ -30,7 +30,7 @@ from transit.quality
 </div>
 
 {#if totals.length > 0 && totals[0].service_days > 0}
-This edition covers {totals[0].service_days} service days, {totals[0].first_label} to {totals[0].last_label}, and {totals[0].judged_label} checked trips. It was built on {build[0].built_label} (UTC).
+<p>This edition covers {totals[0].service_days} service days, {totals[0].first_label} to {totals[0].last_label}, and {totals[0].judged_label} checked trips. It was built on {build[0].built_label} (UTC).</p>
 {/if}
 
 ## The data
