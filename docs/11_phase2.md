@@ -45,6 +45,8 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 
 **Rehearsal, 27 Nov (cloud, raw hours 24 Nov 12:00 to 26 Nov 23:00 UTC replayed from object storage, gold built unwindowed).** 41 of 43 dbt nodes passed; the two failures were share tests on the partial edge days 24 and 27 Nov, which the gate judges per day and so leaves out of 25 and 26 Nov. Every day was red on one thing: **trains have no realtime trip state** (379,784 train `trip_status` rows, none with a `start_date`, so `stg_rt_trip_state` drops them and no train operator is covered). With trains left out (`--mode bus --mode metro --mode lightrail --mode ferry`), 26 Nov is green on all 53 checks (4 warnings: light rail has no arrival rows yet, O-04) and 25 Nov is red only on metro capture (394 of 433 trips, 91.0%): the metro trip-update files have gaps of 150 to 210 s between 14:04 and 14:36 UTC (about 1 am Sydney), over the 120 s coverage limit. Trip left the feed: 100% of trips seen to run left it on both days, and no snapshot ended more than 3.5% of the bus trips.
 
+**Rehearsal with trains, 28 Nov (same replay, D-059).** With train runs dated from the timetable, 3,001 train trips a day are judged and every train bar passes on 25 and 26 Nov: trip match 96%, arrivals within 150 m of a position 97%. Train timetable agreement is a warning (14 to 87 timed rows a day, under the 100-row minimum), and so is the nightly empty train feed at about 01:00 Sydney (`trip_left:empty`). 26 Nov is green on all 67 checks; 25 Nov is still red only on metro capture (91.0%, above). The build took 4.1 min at 8 GB in the cloud; at the host's 300 MB it runs out of memory, on main too (I-23).
+
 ## Models
 
 | Layer | Model | One row per | Notes |
@@ -74,7 +76,7 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 | 7 | **Trip left the feed** in silver (`REMOVED` row in `trip_status`, D-036), for last-stop arrivals and when a trip vanished | built (Mike, 22 Nov); R2-01 section 3.7 | nothing |
 | 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | built (D-038): same operator and mode seen in trip updates that service day | nothing |
 | 9 | **Excess wait time** from headways | planned | nothing |
-| 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned | the worker live on the host |
+| 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned; needed first, as a full build of one real day does not fit 300 MB (I-23) | nothing |
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
 | 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
 | 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
@@ -82,7 +84,8 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 
 ## Open risks
 
-- **Other modes are untested.** Trains, metro, light rail and ferry trip ids may join the complete timetable less well than buses. `dq_trip_match` reports it per mode on the first full day.
+- **Other modes join the timetable differently.** Trains needed their own reading (D-059); metro, light rail and ferry trip ids are checked per mode by `dq_trip_match`.
+- **The build does not fit the host's memory on a real day (I-23).** The nightly build waits for item 10.
 - **Gold and the worker share 2 GB with the collector.** Each is capped at 900 MB; they should not run at the same time (R2-01).
 - **Expiry can delete a file a build is reading.** The worker's hourly expiry removes files that compaction replaced. A build reads the file list at its start, so it should run well clear of the compaction hour, or under a shared lock (item 10).
 - **One feed per mode is not the whole mode.** The light rail feed is the Inner West line only and the ferry feed is Sydney Ferries only, so L2, L3, L4 and private-ferry trips are `not_judged` (D-038) until their feeds are added.
