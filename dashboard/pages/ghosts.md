@@ -1,5 +1,6 @@
 ---
 title: Ghost trips
+hide_title: true
 sidebar_position: 2
 ---
 
@@ -11,7 +12,11 @@ sidebar_position: 2
   };
 </script>
 
-Trips that were in the timetable but never showed up in the live feed (**never seen**), or showed up and then left it well before the end of the route (**vanished**). Only operators that published live data that day are judged, and only while the feed was being captured.
+<div class="lede">
+  <span class="eyebrow">Ghost trips</span>
+  <h1 class="question">Which trips never turned up?</h1>
+  <p class="context">Trips that were in the timetable but never showed up in the live feed (<b>never seen</b>), or showed up and left it well before the end of the route (<b>vanished</b>). Only operators that published live data that day are judged, and only while the feed was being captured.</p>
+</div>
 
 ```sql modes
 select distinct mode_name from transit.route_honesty order by mode_name

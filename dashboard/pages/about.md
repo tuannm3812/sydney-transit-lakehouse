@@ -1,5 +1,6 @@
 ---
 title: About
+hide_title: true
 sidebar_position: 6
 ---
 
@@ -16,7 +17,11 @@ from transit.service_days
 select max(run_at) as built_at from transit.quality
 ```
 
-This site asks a simple question of Sydney's public transport: when the timetable says a trip runs, does the live feed show it running, and do the vehicles keep their spacing? It is an independent data engineering project, not an official Transport for NSW service. For journey planning, use Transport for NSW's own apps.
+<div class="lede">
+  <span class="eyebrow">About</span>
+  <h1 class="question">How this site works</h1>
+  <p class="context">When the timetable says a trip runs, does the live feed show it running, and do the vehicles keep their spacing? This is an independent data engineering project, not an official Transport for NSW service. For journey planning, use Transport for NSW's own apps.</p>
+</div>
 
 This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="d mmm yyyy" /> to <Value data={totals} column=last_day fmt="d mmm yyyy" />, and <Value data={totals} column=trips_judged fmt=num0 /> checked trips. It was built on <Value data={build} column=built_at fmt="d mmm yyyy" /> (UTC).
 

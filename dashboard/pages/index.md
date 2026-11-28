@@ -1,5 +1,6 @@
 ---
 title: Did the bus turn up?
+hide_title: true
 sidebar_position: 1
 ---
 
@@ -12,7 +13,18 @@ sidebar_position: 1
   };
 </script>
 
-Timetabled trips on Sydney's network, checked against what Transport for NSW's live feeds actually showed. A collector has polled the open GTFS-realtime feeds since 17 November 2026, vehicle positions every 15 seconds (ferries 30) and trip updates every 30, and every number here is built from those raw snapshots. Buses, Metro, Inner West light rail and ferries are judged; Sydney Trains not yet (see [About](/about)).
+<div class="lede">
+  <span class="eyebrow">Sydney timetable honesty</span>
+  <h1 class="question">Did the bus turn up?</h1>
+  <p class="context">Every timetabled trip we can judge, checked against what Transport for NSW's live feeds showed. Vehicle positions are polled every 15 seconds (ferries 30) and trip updates every 30, and every number here is built from those raw snapshots.</p>
+  <ul class="chips" aria-label="Modes">
+    <li class="chip" style="--c: #00B5EF"><span class="dot"></span>Bus</li>
+    <li class="chip" style="--c: #00959A"><span class="dot"></span>Metro</li>
+    <li class="chip" style="--c: #EE343F"><span class="dot"></span>Light rail</li>
+    <li class="chip" style="--c: #5AB031"><span class="dot"></span>Ferries</li>
+    <li class="chip later" style="--c: #F6891F"><span class="dot"></span>Trains, not judged yet</li>
+  </ul>
+</div>
 
 ```sql totals
 select
@@ -36,19 +48,53 @@ select
 from transit.bunching_events
 ```
 
-{#if totals.length > 0 && totals[0].service_days > 0 && totals[0].service_days < 7}
+```sql worst_route
+select
+    route_short_name as route,
+    agency_name as operator,
+    sum(trips_missing + trips_vanished) as ghosts,
+    sum(trips_judged) as checked
+from transit.route_honesty
+group by all
+having sum(trips_judged) >= 10
+order by ghosts desc, checked
+limit 1
+```
 
-<Alert status="info">
-<b>Early results.</b> This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="d mmm yyyy" /> to <Value data={totals} column=last_day fmt="d mmm yyyy" />, rebuilt from the raw archive. A few days are not a pattern: treat route rankings as leads, not verdicts. Days are added as the live pipeline builds them.
-</Alert>
+{#if totals.length > 0 && totals[0].service_days > 0}
 
+<div class="figures">
+  <div class="figure lead">
+    <span class="label">Showed up and ran</span>
+    <span class="value"><Value data={totals} column=ran_share fmt=pct1 /></span>
+    <span class="note">of <Value data={totals} column=trips_judged fmt=num0 /> trips checked</span>
+  </div>
+  <div class="figure">
+    <span class="label">Never seen live</span>
+    <span class="value"><Value data={totals} column=trips_missing fmt=num0 /></span>
+    <span class="note"><Value data={totals} column=missing_share fmt=pct2 /> of trips checked</span>
+  </div>
+  <div class="figure">
+    <span class="label">Vanished mid-route</span>
+    <span class="value"><Value data={totals} column=trips_vanished fmt=num0 /></span>
+    <span class="note"><Value data={totals} column=vanished_share fmt=pct2 /> of trips checked</span>
+  </div>
+  <div class="figure">
+    <span class="label">Bunches spotted</span>
+    <span class="value"><Value data={bunch_total} column=bunches fmt=num0 /></span>
+    <span class="note">on <Value data={bunch_total} column=routes fmt=num0 /> routes</span>
+  </div>
+</div>
+
+{#if worst_route.length > 0 && worst_route[0].ghosts > 0}
+<p>The route that lost the most trips was <b>route <Value data={worst_route} column=route /></b> (<Value data={worst_route} column=operator />): <Value data={worst_route} column=ghosts fmt=num0 /> of its <Value data={worst_route} column=checked fmt=num0 /> checked trips never showed up or vanished. See <a href="/ghosts">Ghost trips</a> for every route.</p>
 {/if}
 
-<BigValue data={totals} value=trips_judged title="Trips checked" fmt=num0 />
-<BigValue data={totals} value=ran_share title="Showed up and ran" fmt=pct1 />
-<BigValue data={totals} value=trips_missing title="Never seen live" fmt=num0 comparison=missing_share comparisonFmt=pct2 comparisonTitle="of trips checked" comparisonDelta=false />
-<BigValue data={totals} value=trips_vanished title="Vanished mid-route" fmt=num0 comparison=vanished_share comparisonFmt=pct2 comparisonTitle="of trips checked" comparisonDelta=false />
-<BigValue data={bunch_total} value=bunches title="Bunches spotted" fmt=num0 />
+{#if totals[0].service_days < 7}
+<p class="notice"><b>Early results.</b> This edition covers <Value data={totals} column=service_days /> service days, <Value data={totals} column=first_day fmt="ddd d mmm" /> to <Value data={totals} column=last_day fmt="ddd d mmm yyyy" />, rebuilt from the raw archive. A few days are not a pattern, so treat route rankings as leads, not verdicts.</p>
+{/if}
+
+{/if}
 
 A trip is checked only when the feed was being captured from ten minutes before it was due to start until three hours after it was due to end, and only for operators that published live data that day. A gap in our own collection never reads as a missing bus.
 
@@ -105,15 +151,19 @@ order by min(service_date), mode_name
 
 ## Where to look next
 
-- [Ghost trips](/ghosts): which routes and operators lose trips, and every flagged trip.
-- [Bunching radar](/bunching): where and when buses arrive in clumps.
-- [Map replay](/replay): a whole day of vehicles, played back.
-- [Data quality](/quality): the checks every build has to pass.
-- [About](/about): the data, the method and its limits.
+<div class="next">
+  <a href="/ghosts"><b>Ghost trips</b>Which routes and operators lose trips, and every flagged trip.</a>
+  <a href="/bunching"><b>Bunching radar</b>Where and when buses arrive in clumps.</a>
+  <a href="/replay"><b>Map replay</b>A whole day of vehicles, played back.</a>
+  <a href="/quality"><b>Data quality</b>The checks every build has to pass.</a>
+  <a href="/about"><b>About</b>The data, the method and its limits.</a>
+</div>
 
 ## What the words mean
 
-- **Ran**: the trip appeared in the live feed and got within two stops of its last stop, or left the feed within ten minutes of its scheduled end.
-- **Never seen**: the trip was in the timetable, the feed was being captured the whole time, the operator published other trips that day, and no trip update or vehicle position ever mentioned it. That makes it a ghost candidate, not proof the bus did not run: a vehicle's tracker can fail.
-- **Vanished**: the trip appeared, then left the feed with more than two stops to go, more than ten minutes before its scheduled end.
-- **Bunch**: two consecutive vehicles on a route and direction ran closer than a third of their timetabled gap at three or more stops.
+<dl class="terms">
+  <div><dt>Ran</dt><dd>The trip appeared in the live feed and got within two stops of its last stop, or left the feed within ten minutes of its scheduled end.</dd></div>
+  <div><dt>Never seen</dt><dd>The trip was in the timetable, the feed was captured the whole time, the operator published other trips that day, and nothing in the feed ever named it. A ghost candidate, not proof: a vehicle's tracker can fail.</dd></div>
+  <div><dt>Vanished</dt><dd>The trip appeared, then left the feed with more than two stops to go, more than ten minutes before its scheduled end.</dd></div>
+  <div><dt>Bunch</dt><dd>Two consecutive vehicles on a route and direction ran closer than a third of their timetabled gap at three or more stops.</dd></div>
+</dl>

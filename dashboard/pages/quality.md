@@ -1,9 +1,14 @@
 ---
 title: Data quality
+hide_title: true
 sidebar_position: 5
 ---
 
-Every number on this site comes from a build that runs these checks first. A failed check is shown here, not hidden.
+<div class="lede">
+  <span class="eyebrow">Data quality</span>
+  <h1 class="question">Can you trust these numbers?</h1>
+  <p class="context">Every number on this site comes from a build that runs these checks first. A failed check is shown here, not hidden.</p>
+</div>
 
 ```sql summary
 select
@@ -14,11 +19,23 @@ select
 from transit.quality
 ```
 
-<BigValue data={summary} value=tests_passed title="Checks passed" fmt=num0 />
-<BigValue data={summary} value=tests title="Checks run" fmt=num0 />
-<BigValue data={summary} value=models title="Tables built" fmt=num0 />
-
-Last build: <Value data={summary} column=built_at fmt="d mmm yyyy H:MM AM/PM" /> (UTC).
+<div class="figures">
+  <div class="figure lead">
+    <span class="label">Checks passed</span>
+    <span class="value"><Value data={summary} column=tests_passed fmt=num0 /></span>
+    <span class="note">of <Value data={summary} column=tests fmt=num0 /> run</span>
+  </div>
+  <div class="figure">
+    <span class="label">Tables built</span>
+    <span class="value"><Value data={summary} column=models fmt=num0 /></span>
+    <span class="note">by dbt on DuckDB</span>
+  </div>
+  <div class="figure">
+    <span class="label">Last build</span>
+    <span class="value"><Value data={summary} column=built_at fmt="d mmm" /></span>
+    <span class="note"><Value data={summary} column=built_at fmt="H:MM AM/PM" /> UTC</span>
+  </div>
+</div>
 
 ## Realtime trips that match the timetable
 

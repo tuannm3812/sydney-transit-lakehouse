@@ -9,6 +9,28 @@ appearance:
   switcher: true
 
 theme:
+  # Site colours follow the project decks (DESIGN.md here): a slate
+  # ink, the deck's blue for links and controls, its teal for "done"
+  # states, and a faint blue-grey ground. Data colours are below.
+  colors:
+    primary: { light: "#32658A", dark: "#86B4D8" }
+    primary-content: { light: "#FFFFFF", dark: "#0E1A23" }
+    accent: { light: "#2E6B66", dark: "#7CC3BB" }
+    accent-content: { light: "#FFFFFF", dark: "#0E1A23" }
+    base-100: { light: "#FFFFFF", dark: "#0F171E" }
+    base-200: { light: "#F3F6F8", dark: "#16212A" }
+    base-300: { light: "#DCE3E8", dark: "#283642" }
+    base-heading: { light: "#14222D", dark: "#EEF3F6" }
+    base-content: { light: "#2A3843", dark: "#D3DDE4" }
+    base-content-muted: { light: "#5B6A76", dark: "#94A4B0" }
+    info: { light: "#32658A", dark: "#86B4D8" }
+    info-content: { light: "#FFFFFF", dark: "#0E1A23" }
+    positive: { light: "#2E6B66", dark: "#7CC3BB" }
+    positive-content: { light: "#FFFFFF", dark: "#0E1A23" }
+    warning: { light: "#896521", dark: "#D9B464" }
+    warning-content: { light: "#FFFFFF", dark: "#0E1A23" }
+    negative: { light: "#B23A2E", dark: "#EB8A7F" }
+    negative-content: { light: "#FFFFFF", dark: "#0E1A23" }
   colorPalettes:
     default:
       light: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725",

@@ -1,5 +1,6 @@
 ---
 title: Bunching radar
+hide_title: true
 sidebar_position: 3
 ---
 
@@ -14,7 +15,11 @@ sidebar_position: 3
   const osmTiles = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 </script>
 
-Vehicles on the same route and direction that arrive in clumps instead of evenly spaced. A gap between two consecutive vehicles at a stop is **bunched** when it is under a third of the timetabled gap between the same two trips. A **bunch** is a pair that stays bunched for three or more stops.
+<div class="lede">
+  <span class="eyebrow">Bunching radar</span>
+  <h1 class="question">Where do buses arrive in clumps?</h1>
+  <p class="context">A gap between two consecutive buses at a stop is <b>bunched</b> when it is under a third of the gap the timetable planned between the same two trips. A <b>bunch</b> is a pair that stays bunched for three or more stops, so riders further down the route wait longer, then see two buses at once.</p>
+</div>
 
 ```sql day_types
 select distinct day_type from transit.bunching_hotspots order by day_type desc
