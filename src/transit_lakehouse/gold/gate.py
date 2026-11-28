@@ -84,6 +84,14 @@ GOOD_STATUSES = {"pass", "success"}
 # Bars measured from vehicle positions: expected for modes with that feed.
 VP_MODELS = {"dq_position_plausibility"}
 # Known gaps that warn instead of failing when a mode has no row.
+# A bar measured on a subset of rows, and that subset's size column: a
+# share from fewer than MIN_SAMPLE rows warns instead of judging. The
+# train feed gives delays, not times, so few train arrivals carry the
+# feed's own scheduled time (14 on 26 Nov 2026, D-059).
+SAMPLE_COLUMN = {
+    ("dq_stop_arrival", "schedule_agree_share"): "schedule_checked",
+}
+MIN_SAMPLE = 100
 BAR_EXEMPT = {
     ("dq_stop_arrival", "lightrail"): "no light rail arrivals yet (O-04)",
     ("dq_arrival_position", "lightrail"): "no light rail arrivals yet (O-04)",
@@ -294,14 +302,19 @@ def check_bars(
     out = []
     for bar in bars:
         col = DAY_COLUMN.get(bar.model, "service_date")
-        rows = dict(
-            _rows(
-                con,
-                f"select mode, {bar.column} from gold.{bar.model}"
-                f" where {col} = ? order by mode",
-                (day,),
-            )
+        sample = SAMPLE_COLUMN.get((bar.model, bar.column))
+        found = _rows(
+            con,
+            f"select mode, {bar.column}, {sample or 'null'}"
+            f" from gold.{bar.model} where {col} = ? order by mode",
+            (day,),
         )
+        rows = {m: v for m, v, _ in found}
+        small = {
+            m: n
+            for m, v, n in found
+            if sample and v is not None and (n or 0) < MIN_SAMPLE
+        }
         expected = (
             [m for m in modes if m in vp_modes]
             if bar.model in VP_MODELS
@@ -324,6 +337,20 @@ def check_bars(
             )
         for mode, value in rows.items():
             if value is None:
+                continue
+            if mode in small:
+                # Too few rows to judge a share: shown, not failed.
+                out.append(
+                    Check(
+                        name,
+                        mode,
+                        WARN,
+                        value=round(float(value), 6),
+                        bar=bar.threshold,
+                        detail=f"only {small[mode]} rows to measure"
+                        f" (under {MIN_SAMPLE})",
+                    )
+                )
                 continue
             out.append(
                 Check(
@@ -555,7 +582,7 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
             group by all
         ),
         snaps as (
-            select feed, fetched_at,
+            select feed, fetched_at, entities,
                 lag(entities) over (partition by feed order by fetched_at)
                     as prev_entities
             from bronze.snapshot
@@ -567,16 +594,20 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
             max(r.removed / s.prev_entities) as worst,
             count(*) filter (
                 r.removed / s.prev_entities > ?
-                and s.prev_entities >= ?
-            ) as bursts
+                and s.prev_entities >= ? and s.entities > 0
+            ) as bursts,
+            count(*) filter (
+                r.removed / s.prev_entities > ?
+                and s.prev_entities >= ? and s.entities = 0
+            ) as empties
         from removals r
         join snaps s on s.feed = r.feed and s.fetched_at = r.fetched_at
         where s.prev_entities > 0
         group by 1 order by 1
         """,
-        (day, MASS_REMOVAL_SHARE, MASS_REMOVAL_MIN_TRIPS),
+        (day, *(MASS_REMOVAL_SHARE, MASS_REMOVAL_MIN_TRIPS) * 2),
     )
-    for mode, worst, bursts in mass:
+    for mode, worst, bursts, empties in mass:
         out.append(
             Check(
                 "trip_left:burst",
@@ -587,6 +618,19 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
                 detail=f"largest share removed by one snapshot {worst:.1%}",
             )
         )
+        # A readable empty feed ends every trip on it: Sydney Trains
+        # empties for about 90 s at 1 am Sydney (D-059). It is the feed,
+        # not a bad file, so it is shown, not failed.
+        if empties:
+            out.append(
+                Check(
+                    "trip_left:empty",
+                    mode,
+                    WARN,
+                    value=int(empties),
+                    detail="an empty snapshot ended over half the trips",
+                )
+            )
     return out
 
 

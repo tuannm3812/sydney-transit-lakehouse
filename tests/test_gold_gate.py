@@ -137,7 +137,8 @@ def make_db(path: Path, days: tuple[date, ...] = (D1, D2)) -> Path:
         """
         create table gold.dq_stop_arrival as
         select service_date, mode, 1.0 as delay_sane_share,
-            0.99 as schedule_agree_share, 1.0 as before_exit_share
+            0.99 as schedule_agree_share, 500 as schedule_checked,
+            1.0 as before_exit_share
         from gold.dq_trip_match
         """
     )
@@ -328,6 +329,28 @@ def test_mode_option_leaves_other_modes_out(db: Path) -> None:
     assert modes == {None, "bus"}
 
 
+def test_a_share_from_few_rows_warns(db: Path) -> None:
+    sql(
+        db,
+        "update gold.dq_stop_arrival set schedule_agree_share = 0.6,"
+        " schedule_checked = 14 where mode = 'ferry'",
+    )
+    res = run(db)
+    assert failed(res) == set()
+    warns = {
+        (c["check"], c["mode"])
+        for c in res["days"][0]["checks"]
+        if c["status"] == "warn"
+    }
+    assert warns == {("bar:dq_stop_arrival.schedule_agree_share", "ferry")}
+    sql(db, "update gold.dq_stop_arrival set schedule_checked = 100")
+    assert (
+        "2026-11-25",
+        "bar:dq_stop_arrival.schedule_agree_share",
+        "ferry",
+    ) in failed(run(db))
+
+
 def test_a_day_missing_from_gold_breaks_the_run(tmp_path: Path) -> None:
     db = make_db(tmp_path / "transit.duckdb", (D1, D2 + timedelta(days=1)))
     res = run(db)
@@ -421,7 +444,7 @@ def test_burst_check_skips_unreadable_files(db: Path) -> None:
             )
         con.execute(
             "insert into bronze.snapshot values"
-            " ('bus_tripupdates', 'bus', 'trip_updates', ?, 0, null)",
+            " ('bus_tripupdates', 'bus', 'trip_updates', ?, 40, null)",
             [t + timedelta(seconds=60)],
         )
         for i in range(150):
@@ -541,7 +564,10 @@ def test_trips_that_never_left_fail_the_share(db: Path) -> None:
     assert failed(res) == {("2026-11-25", "trip_left:share", "ferry")}
 
 
-def test_one_snapshot_ending_most_trips_fails(db: Path) -> None:
+@pytest.mark.parametrize("entities_after", [50, 0])
+def test_one_snapshot_ending_most_trips_fails(
+    db: Path, entities_after: int
+) -> None:
     # A bad file that ends every trip (what D-036 and D-049 prevent).
     t = datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
     with duckdb.connect(str(db)) as con:
@@ -551,8 +577,8 @@ def test_one_snapshot_ending_most_trips_fails(db: Path) -> None:
             [t],
         )
         con.execute(
-            SNAP_INSERT + " ('bus_tripupdates', 'bus', 'trip_updates', ?, 0)",
-            [t + timedelta(seconds=30)],
+            SNAP_INSERT + " ('bus_tripupdates', 'bus', 'trip_updates', ?, ?)",
+            [t + timedelta(seconds=30), entities_after],
         )
         for i in range(150):
             con.execute(
@@ -561,7 +587,18 @@ def test_one_snapshot_ending_most_trips_fails(db: Path) -> None:
                 " 'REMOVED', 0, ?)",
                 [f"x{i}", t + timedelta(seconds=30)],
             )
-    assert failed(run(db)) == {("2026-11-25", "trip_left:burst", "bus")}
+    res = run(db)
+    if entities_after:
+        assert failed(res) == {("2026-11-25", "trip_left:burst", "bus")}
+    else:
+        # A readable empty feed (Sydney Trains at 1 am, D-059) warns.
+        assert failed(res) == set()
+        warns = [
+            c["check"]
+            for c in res["days"][0]["checks"]
+            if c["status"] == "warn"
+        ]
+        assert warns == ["trip_left:empty"]
 
 
 def test_since_and_until_limit_the_days(db: Path) -> None:

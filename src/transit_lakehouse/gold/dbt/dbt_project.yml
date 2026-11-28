@@ -46,6 +46,10 @@ vars:
   # Stops capped at a trip's exit together: more than this many have no
   # real arrival time (D-054).
   capped_group_max_stops: 3
+  # dq_trip_match leaves out unplanned runs (Sydney Trains route ids
+  # starting with this) and trip ids seen for less than this (D-059).
+  unplanned_route_prefix: "RTTA"
+  min_trip_seen_minutes: 5
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 
