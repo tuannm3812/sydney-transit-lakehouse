@@ -109,6 +109,8 @@ map.on('load', () => document
     el.classList.remove('maplibregl-compact-show');
     el.removeAttribute('open');
   }));
+// The page can size the frame after the map starts; follow it.
+new ResizeObserver(() => map.resize()).observe(map.getContainer());
 const overlay = new deck.MapboxOverlay({ layers: [] });
 map.addControl(overlay);
 map.addControl(new maplibregl.NavigationControl(), 'top-right');

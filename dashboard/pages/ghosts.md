@@ -97,7 +97,7 @@ limit 50
   <Column id=mode_name title="Mode" />
   <Column id=region title="Region" />
   <Column id=route title="Route" />
-  <Column id=operator title="Operator" />
+  <Column id=operator title="Operator" wrap=true />
   <Column id=trips_checked title="Checked" fmt=num0 />
   <Column id=never_seen title="Never seen" fmt=num0 />
   <Column id=never_seen_high_confidence title="Of which high confidence" fmt=num0 />
@@ -125,7 +125,7 @@ order by trips_checked desc
 
 <DataTable data={operators} emptySet=pass emptyMessage="No rows for this selection" rows=20>
   <Column id=mode_name title="Mode" />
-  <Column id=operator title="Operator" />
+  <Column id=operator title="Operator" wrap=true />
   <Column id=trips_checked title="Checked" fmt=num0 />
   <Column id=ran_share title="Ran" fmt=pct1 />
   <Column id=never_seen_share title="Never seen" fmt=pct2 />
@@ -164,7 +164,7 @@ order by service_date desc, due
   <Column id=mode title="Mode" />
   <Column id=route title="Route" />
   <Column id=towards title="Towards" wrap=true />
-  <Column id=operator title="Operator" />
+  <Column id=operator title="Operator" wrap=true />
   <Column id=kind title="Kind" />
   <Column id=confidence title="Confidence" />
   <Column id=stops_passed title="Stops passed" align=right />

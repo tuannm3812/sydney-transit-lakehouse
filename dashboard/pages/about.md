@@ -19,7 +19,7 @@ from transit.service_days
 ```sql build
 select
     max(run_at) as built_at,
-    strftime(timezone('UTC', max(run_at)), '%-d %b %Y') as built_label
+    max(built_on) as built_label
 from transit.quality
 ```
 
@@ -30,7 +30,7 @@ from transit.quality
 </div>
 
 {#if totals.length > 0 && totals[0].service_days > 0}
-<p>This edition covers {totals[0].service_days} service {totals[0].service_days === 1 ? 'day' : 'days'}, {totals[0].first_label} to {totals[0].last_label}, and {totals[0].judged_label} checked trips.{#if build.length > 0 && build[0].built_label} It was built on {build[0].built_label} (UTC).{/if}</p>
+<p>This edition covers {totals[0].service_days} service {totals[0].service_days === 1 ? 'day' : 'days'}, {totals[0].first_label} to {totals[0].last_label}, and {totals[0].judged_label} checked trips.{#if build.length > 0 && build[0].built_label}{' '}It was built on {build[0].built_label} (UTC).{/if}</p>
 {/if}
 
 ## The data
