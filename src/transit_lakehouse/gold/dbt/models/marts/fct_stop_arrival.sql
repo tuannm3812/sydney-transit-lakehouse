@@ -69,7 +69,7 @@ pred as (
         mode, trip_id, start_date, stop_sequence, fetched_at,
         arrival_time, arrival_delay_s, departure_delay_s,
         stop_status, trip_delay_s
-    from {{ source('silver', 'stop_prediction') }}
+    from {{ ref('stg_rt_stop_prediction') }}
 ),
 
 joined as (

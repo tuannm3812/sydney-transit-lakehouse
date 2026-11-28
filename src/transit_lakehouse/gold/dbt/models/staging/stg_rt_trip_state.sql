@@ -13,7 +13,7 @@ with states as (
     select
         *,
         {{ gtfs_date('start_date') }} as rt_date
-    from {{ source('silver', 'trip_status') }}
+    from {{ ref('stg_rt_trip_status') }}
     where trip_id is not null and start_date is not null
 ),
 

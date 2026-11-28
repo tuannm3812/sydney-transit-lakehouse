@@ -21,7 +21,7 @@ with arr as (
 
 pos as (
     select trip_id, start_date, event_ts, latitude, longitude
-    from {{ source('silver', 'vehicle_position') }}
+    from {{ ref('stg_rt_vehicle_position') }}
     where trip_id is not null and not coalesce(quarantined, false)
 ),
 

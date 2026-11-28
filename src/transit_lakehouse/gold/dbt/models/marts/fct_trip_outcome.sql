@@ -84,7 +84,7 @@ last_row as (
             fetched_at
         ) as latest,
         max(fetched_at) as changed_at
-    from {{ source('silver', 'stop_prediction') }}
+    from {{ ref('stg_rt_stop_prediction') }}
     where trip_id is not null
     group by all
 ),
@@ -147,7 +147,7 @@ vp as (
         min(fetched_at) as first_position_at,
         max(fetched_at) as last_position_at,
         count(*) as positions
-    from {{ source('silver', 'vehicle_position') }}
+    from {{ ref('stg_rt_vehicle_position') }}
     where trip_id is not null and not coalesce(quarantined, false)
     group by all
 ),
