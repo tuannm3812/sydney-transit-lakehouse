@@ -3,14 +3,21 @@
 -- feed's scheduled time agreeing with the timetable's to the minute,
 -- and the last prediction not later than the poll that dropped the
 -- stop (the rest are capped there, fct_stop_arrival).
+{{ per_day() }}
+select * from (
 select
     service_date,
     mode,
     count(*) as arrivals,
     avg((delay_s between -1800 and 10800)::int) as delay_sane_share,
     avg((abs(schedule_disagreement_s) <= 60)::int) as schedule_agree_share,
+    -- arrivals that carry the feed's own scheduled time; the gate judges
+    -- the share above only from 100 or more (D-059)
+    count(schedule_disagreement_s) as schedule_checked,
     avg((predicted_arrival_utc <= left_feed_at + interval 2 minute)::int)
         as before_exit_share,
     avg((method = 'capped_at_exit')::int) as capped_share
 from {{ ref('fct_stop_arrival') }}
 group by all
+) as day_rows
+{{ window_rows() }}

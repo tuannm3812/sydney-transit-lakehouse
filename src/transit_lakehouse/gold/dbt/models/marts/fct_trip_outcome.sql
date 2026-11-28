@@ -34,6 +34,8 @@
 -- operators publish no realtime. So a trip can be never_seen only when
 -- another trip of its operator and mode appeared in trip updates that
 -- service day (operator_covered, D-038); otherwise it is not_judged.
+{{ per_day() }}
+select * from (
 with sched as (
     select * from {{ ref('stg_scheduled_trip') }}
 ),
@@ -67,38 +69,8 @@ rt as (
     group by all
 ),
 
--- The time and the trip delay come from the same, latest row: two
--- separate arg_max calls skip nulls on their own and could pair one
--- row's time with another row's delay.
-last_row as (
-    select
-        mode,
-        trip_id,
-        start_date,
-        stop_sequence,
-        arg_max(
-            {
-                'predicted_at': coalesce(arrival_time, departure_time),
-                'trip_delay_s': trip_delay_s
-            },
-            fetched_at
-        ) as latest,
-        max(fetched_at) as changed_at
-    from {{ source('silver', 'stop_prediction') }}
-    where trip_id is not null
-    group by all
-),
-
 last_prediction as (
-    select
-        mode,
-        trip_id,
-        start_date,
-        stop_sequence,
-        latest.predicted_at as raw_predicted_at,
-        latest.trip_delay_s as row_trip_delay_s,
-        changed_at
-    from last_row
+    select * from {{ ref('stg_rt_last_prediction') }}
 ),
 
 stops_ahead as (
@@ -147,7 +119,7 @@ vp as (
         min(fetched_at) as first_position_at,
         max(fetched_at) as last_position_at,
         count(*) as positions
-    from {{ source('silver', 'vehicle_position') }}
+    from {{ ref('stg_rt_vehicle_position') }}
     where trip_id is not null and not coalesce(quarantined, false)
     group by all
 ),
@@ -295,3 +267,5 @@ select
     version as timetable_version,
     version_fallback
 from outcome
+) as day_rows
+{{ window_rows() }}

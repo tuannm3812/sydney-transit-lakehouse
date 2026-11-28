@@ -66,7 +66,7 @@ select
     coalesce(t.trip_headsign, '') as headsign,
     s.bucket, s.lat, s.lon
 from stepped s
-left join staging.stg_scheduled_trip t
+left join gold.fct_trip_outcome t
     on t.trip_id = s.trip_id and t.start_date = s.start_date
 order by s.mode, s.vehicle_id, s.trip_id, s.bucket
 """

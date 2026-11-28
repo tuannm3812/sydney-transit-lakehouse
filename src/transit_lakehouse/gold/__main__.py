@@ -3,6 +3,8 @@
     python -m transit_lakehouse.gold build             # views + dbt build
     python -m transit_lakehouse.gold build --since 2026-11-17 \\
         --vars '{"outcome_grace_minutes": 20}'
+    python -m transit_lakehouse.gold build --day 2026-11-29   # nightly
+    python -m transit_lakehouse.gold build --day 2026-11-17 2026-11-18
     python -m transit_lakehouse.gold views             # views only
     python -m transit_lakehouse.gold dq                # last run's results
     python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
@@ -28,7 +30,7 @@ import json
 import logging
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
@@ -60,12 +62,14 @@ def gold_paths(data_dir: Path) -> dict[str, Path]:
     }
 
 
-def build_views(data_dir: Path, since: date | None) -> list:
+def build_views(
+    data_dir: Path, since: date | None, until: date | None = None
+) -> list:
     paths = gold_paths(data_dir)
     paths["root"].mkdir(parents=True, exist_ok=True)
     catalog = open_catalog(data_dir)
     with duckdb.connect(str(paths["db"])) as con:
-        return refresh_views(con, catalog, since)
+        return refresh_views(con, catalog, since, until)
 
 
 def dbt_args(
@@ -106,9 +110,10 @@ def build(
     since: date | None,
     variables: dict,
     select: list[str] | None,
+    until: date | None = None,
 ) -> int:
     paths = gold_paths(data_dir)
-    views = build_views(data_dir, since)
+    views = build_views(data_dir, since, until)
     for v in views:
         log.info("view %s over %d files", v.name, v.files)
     ok = run_dbt(dbt_args("build", data_dir, variables, select), paths["db"])
@@ -122,6 +127,36 @@ def build(
             n = dq.record(con, results, window)
         log.info("recorded %d results in %s", n, dq.DQ_TABLE)
     return 0 if ok else 1
+
+
+def build_days(
+    data_dir: Path,
+    days: list[date],
+    variables: dict,
+    select: list[str] | None,
+) -> int:
+    """Build each Sydney service day on its own, oldest first (D-060).
+
+    A day's trips run from its local midnight (13:00 or 14:00 UTC the
+    day before) to the 3-hour grace after its last trip (about 20:00
+    UTC on the day), so the silver files of the UTC date before it and
+    of the day itself cover it, and only those are read: a backfill of
+    an early day must not read the weeks after it. The per-day models
+    replace that day only; the rest of the history stays.
+    """
+    worst = 0
+    for day in sorted(days):
+        day_vars = {
+            **variables,
+            "service_date_from": day.isoformat(),
+            "service_date_to": day.isoformat(),
+        }
+        log.info("building service day %s", day)
+        rc = build(
+            data_dir, day - timedelta(days=1), day_vars, select, until=day
+        )
+        worst = max(worst, rc)
+    return worst
 
 
 def last_results(data_dir: Path) -> str:
@@ -141,9 +176,19 @@ def last_results(data_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def views_for_day(data_dir: Path, day: date) -> None:
+    """Point the bronze and silver views at one service day's files.
+
+    The views follow the last build's window (D-060), so a tool that
+    reads silver for an earlier day re-points them first.
+    """
+    build_views(data_dir, day - timedelta(days=1), day)
+
+
 def run_handcheck(args: argparse.Namespace) -> int:
     """Write the hand-check sheet for one service day (D-045)."""
     db = gold_paths(args.data_dir)["db"]
+    views_for_day(args.data_dir, args.service_date)
     with duckdb.connect(str(db), read_only=True) as con:
         trips = handcheck.sample(con, args.service_date, args.n, args.seed)
         evidence = handcheck.gather(con, args.data_dir, trips)
@@ -174,8 +219,9 @@ def run_replay(args: argparse.Namespace) -> int:
     """Export map replay files for each Sydney day asked (D-045)."""
     db = gold_paths(args.data_dir)["db"]
     args.out.mkdir(parents=True, exist_ok=True)
-    with duckdb.connect(str(db), read_only=True) as con:
-        for day in args.day:
+    for day in args.day:
+        views_for_day(args.data_dir, day)
+        with duckdb.connect(str(db), read_only=True) as con:
             entry = replay.export_day(
                 con, day, args.out, args.step, args.mode or None
             )
@@ -227,6 +273,12 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.choices["build"]
     b.add_argument("--vars", default="{}", help="dbt vars, as JSON")
     b.add_argument("--select", nargs="+", help="dbt node selection")
+    b.add_argument(
+        "--day",
+        type=date.fromisoformat,
+        nargs="+",
+        help="build these Sydney service days, one at a time (D-060)",
+    )
     sub.add_parser("dq", help="results of the last build")
     h = sub.add_parser("handcheck", help="ghost trip hand-check sheet")
     h.add_argument("--service-date", type=date.fromisoformat, required=True)
@@ -286,7 +338,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_gate(args)
     if args.cmd == "gate-report":
         return gate_report.run(args)
-    return build(args.data_dir, args.since, json.loads(args.vars), args.select)
+    variables = json.loads(args.vars)
+    if args.day:
+        if args.since:
+            parser.error("--day sets the files read; drop --since")
+        return build_days(args.data_dir, args.day, variables, args.select)
+    return build(args.data_dir, args.since, variables, args.select)
 
 
 if __name__ == "__main__":

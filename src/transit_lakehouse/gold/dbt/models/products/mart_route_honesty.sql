@@ -3,6 +3,8 @@
 -- from before the start to the grace after the end, for an operator
 -- with realtime that day, D-038), so a capture gap or an operator
 -- without realtime never lowers a route's score.
+{{ per_day() }}
+select * from (
 with t as (
     select * from {{ ref('fct_trip_outcome') }}
 )
@@ -37,3 +39,5 @@ select
     end as ghost_share
 from t
 group by service_date, mode, region, route_id
+) as day_rows
+{{ window_rows() }}

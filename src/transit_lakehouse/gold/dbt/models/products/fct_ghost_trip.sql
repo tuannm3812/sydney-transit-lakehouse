@@ -5,6 +5,8 @@
 -- "Missing" is a ghost candidate, not proof the trip did not run: the
 -- confidence comes from fct_trip_outcome, and the hand-check
 -- (`gold handcheck`) tests a sample against the raw snapshots.
+{{ per_day() }}
+select * from (
 with t as (
     select * from {{ ref('fct_trip_outcome') }}
     where operator_covered and outcome in ('never_seen', 'partial')
@@ -48,3 +50,5 @@ select
     last_state_at,
     timetable_version
 from t
+) as day_rows
+{{ window_rows() }}

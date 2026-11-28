@@ -56,6 +56,7 @@ CHECK_NAMES = {
     "trip_left:rows": "Trip-left rows (D-036)",
     "trip_left:share": "Trips seen to run that left the feed",
     "trip_left:burst": "Snapshots ending over half the trips",
+    "trip_left:empty": "Empty snapshots ending over half the trips",
 }
 
 

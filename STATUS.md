@@ -103,8 +103,10 @@ Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); not
 - [x] Run on 2 real service days (22 and 23 Nov) from S3 hours: R3-01, `docs/reports/phase3-realdays-20261124.md`. 0.45% of Monday's judged trips missing (161 of 166 at Busways North West; refreshed 25 Nov on D-048, D-052 and D-053), 2,274 bus bunches on D-051 and D-054, no pipeline miss in 40 hand-checked trips; three judging rules fixed (D-047)
 - [x] Mike: verdicts on the two hand-check sheets, all 40 agree (25 Nov)
 - [x] Replay expires and compacts as it goes (I-20, D-056)
-- [ ] The gold window keeps the day before (I-21)
-- [ ] Trains judged from their trip ids; light rail arrivals (O-04)
+- [x] The gold window keeps the day before (I-21, D-060)
+- [x] Trains judged: runs dated from the timetable, stops by stop id, hidden-early and origin arrivals carry no time (D-059); every train bar passes on 25 and 26 Nov
+- [ ] Light rail arrivals (O-04)
+- [x] Gold builds one service day at a time and fits the host's 300 MB (I-23, D-060)
 - [ ] Live radar from the latest trip updates (after the worker is live)
 - [ ] Dashboard host and portfolio link (Mike's choice)
 - [ ] Hand-check of 20 trips on backfilled history (the gate): pass at 18 of 20 with no pipeline miss (D-046)

@@ -78,11 +78,12 @@ services:
         max-file: "5"
 
   gold:
-    # Phase 2 gold marts (D-035): a one-off dbt build on DuckDB over the
-    # silver tables, `docker compose --profile gold run --rm gold build`.
+    # Phase 2 gold marts (D-035): a dbt build on DuckDB over the silver
+    # tables, one service day at a time (D-060):
+    # `docker compose --profile gold run --rm gold build --day <date>`.
     # Not scheduled yet: it waits for the worker to run live. DuckDB is
-    # held to 300 MB and one thread; the whole process peaked at about
-    # 690 MB on two real hours (docs/reports/marts-dryrun-20261121.md).
+    # held to 300 MB and one thread; a one-day build peaked at 842 MB
+    # on 25-27 Nov replayed (I-23).
     build: .
     profiles: ["gold"]
     entrypoint: ["python", "-m", "transit_lakehouse.gold"]

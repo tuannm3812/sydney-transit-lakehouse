@@ -3,6 +3,8 @@
 -- A route of a network that spans regions can have trips of both in
 -- one hour (an intercity line from Central and from Gosford), so stop
 -- and gap figures are grouped by mode and region too, as the trips are.
+{{ per_day() }}
+select * from (
 with trips as (
     select
         *,
@@ -45,7 +47,9 @@ stops as (
         quantile_cont(a.delay_s, 0.9) as p90_delay_s
     from {{ ref('fct_stop_arrival') }} a
     join trips t on t.trip_id = a.trip_id and t.service_date = a.service_date
-    where not a.skipped and a.time_known  -- D-054
+    -- a capped run has no time (D-054); a hidden-early train stop is
+    -- on time or early, so it counts, at its ceiling of 0 (D-059)
+    where not a.skipped and (a.time_known or a.early_hidden)
     group by all
 ),
 
@@ -77,3 +81,5 @@ select
 from trip_counts c
 left join stops s using (service_date, mode, region, route_id, local_hour)
 left join gaps g using (service_date, mode, region, route_id, local_hour)
+) as day_rows
+{{ window_rows() }}

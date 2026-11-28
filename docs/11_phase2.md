@@ -24,6 +24,7 @@ The dbt project lives in the package (`src/transit_lakehouse/gold/dbt/`), so the
 The gate is the quality page green for 7 straight service days, counted from the worker go-live once the first full day of every mode is green (D-039). `gold gate` decides "green" per Sydney service day from the gold database alone, read-only (D-057):
 
 ```bash
+python -m transit_lakehouse.gold build --day 2026-11-29   # nightly, one service day (D-060)
 python -m transit_lakehouse.gold gate --since 2026-11-29 --json docs/reports/gold-gate.json
 python -m transit_lakehouse.gold gate-report --gate-json docs/reports/gold-gate.json \
     --commit <sha> --out docs/reports/phase2-gate-<yyyymmdd>.md
@@ -44,6 +45,8 @@ It exits 0 only when the last green run reaches `--days` (7). On the host: `dock
 A day is `open` until trip updates were captured past its last trip's end plus the grace, so the newest day never counts early. The draft report fills R2-02's tables from the JSON; Findings are written by hand before it is set to Final, as for R0-02.
 
 **Rehearsal, 27 Nov (cloud, raw hours 24 Nov 12:00 to 26 Nov 23:00 UTC replayed from object storage, gold built unwindowed).** 41 of 43 dbt nodes passed; the two failures were share tests on the partial edge days 24 and 27 Nov, which the gate judges per day and so leaves out of 25 and 26 Nov. Every day was red on one thing: **trains have no realtime trip state** (379,784 train `trip_status` rows, none with a `start_date`, so `stg_rt_trip_state` drops them and no train operator is covered). With trains left out (`--mode bus --mode metro --mode lightrail --mode ferry`), 26 Nov is green on all 53 checks (4 warnings: light rail has no arrival rows yet, O-04) and 25 Nov is red only on metro capture (394 of 433 trips, 91.0%): the metro trip-update files have gaps of 150 to 210 s between 14:04 and 14:36 UTC (about 1 am Sydney), over the 120 s coverage limit. Trip left the feed: 100% of trips seen to run left it on both days, and no snapshot ended more than 3.5% of the bus trips.
+
+**Rehearsal with trains, 28 Nov (same replay, D-059).** With train runs dated from the timetable, 3,001 train trips a day are judged and every train bar passes on 25 and 26 Nov: arrivals within 150 m of a position 97%. Train trip match is 93.4% and 94.1% against the 95% bar (corrected 28 Nov after the Antigravity review: a trip whose state never changed was counted as a blip). Every unmatched train trip id is in no timetable TfNSW published (0 of 208 and 0 of 183 in any version held), so the gap is the feed's, as with the RTTA runs. Mike chose to count them apart with their own daily count (`unlisted_trips`), and train trip match is then 100% (2,939 and 2,905 trips judged). Train timetable agreement is a warning (14 to 87 timed rows a day, under the 100-row minimum), and so is the nightly empty train feed at about 01:00 Sydney (`trip_left:empty`). 26 Nov is green on all 67 checks; 25 Nov is red only on metro capture (91.0%, above). A full build took 4.1 min at 8 GB in the cloud; at the host's 300 MB it ran out of memory, on main too (I-23), so gold now builds one day at a time (D-060).
 
 ## Models
 
@@ -74,7 +77,7 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 | 7 | **Trip left the feed** in silver (`REMOVED` row in `trip_status`, D-036), for last-stop arrivals and when a trip vanished | built (Mike, 22 Nov); R2-01 section 3.7 | nothing |
 | 8 | **Operator coverage**, so ghost rates count only operators that publish realtime | built (D-038): same operator and mode seen in trip updates that service day | nothing |
 | 9 | **Excess wait time** from headways | planned | nothing |
-| 10 | **Incremental builds by service day** and a nightly run (gold for the previous day by 04:00 Sydney), scheduled away from the worker's hourly compaction | planned | the worker live on the host |
+| 10 | **Incremental builds by service day** (`gold build --day`, D-060) and a nightly run, scheduled away from the worker's hourly compaction | built; 25 to 27 Nov each built at 300 MB (peak 842 MB); the nightly schedule waits | the worker live on the host |
 | 11 | **Volume test**: rows within 3 standard deviations of the same hour over the last 4 weeks | planned | four weeks of silver |
 | 12 | **Public quality page** from `gold.dq_results`, capture rate and freshness | planned | the public dashboard host |
 | 13 | **A full-day run** of every mode with the plan's 3-hour grace, memory and time measured | planned | the worker live, after the Phase 0 gate (about 28 Nov) |
@@ -82,7 +85,8 @@ A day is `open` until trip updates were captured past its last trip's end plus t
 
 ## Open risks
 
-- **Other modes are untested.** Trains, metro, light rail and ferry trip ids may join the complete timetable less well than buses. `dq_trip_match` reports it per mode on the first full day.
+- **Other modes join the timetable differently.** Trains needed their own reading (D-059); metro, light rail and ferry trip ids are checked per mode by `dq_trip_match`.
+- **The build is near the cap.** A one-day build peaks at about 840 MB of the 900 MB container cap (D-060). Bus days with more trips than late November, or `mart_bunching_hotspot`, which reads every day built, may need the next step down in memory.
 - **Gold and the worker share 2 GB with the collector.** Each is capped at 900 MB; they should not run at the same time (R2-01).
 - **Expiry can delete a file a build is reading.** The worker's hourly expiry removes files that compaction replaced. A build reads the file list at its start, so it should run well clear of the compaction hour, or under a shared lock (item 10).
 - **One feed per mode is not the whole mode.** The light rail feed is the Inner West line only and the ferry feed is Sydney Ferries only, so L2, L3, L4 and private-ferry trips are `not_judged` (D-038) until their feeds are added.

@@ -11,4 +11,8 @@ transit_gold:
       settings:
         memory_limit: "{{ env_var('GOLD_MEMORY_LIMIT', '300MB') }}"
         preserve_insertion_order: false
+        # A table written by one model stays in memory until a
+        # checkpoint, so the next model starts with less; checkpoint
+        # often instead of at 16 MB of WAL's default 16x (I-23).
+        checkpoint_threshold: "16MB"
         threads: "{{ env_var('GOLD_THREADS', '1') }}"

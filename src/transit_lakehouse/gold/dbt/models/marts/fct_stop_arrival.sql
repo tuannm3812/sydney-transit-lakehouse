@@ -24,70 +24,34 @@
 -- ran_max_stops_left stops were still listed; a trip that vanishes
 -- further from its end gives no arrivals for the stops it never
 -- reached.
-with sched as (
-    select service_date, trip_id, pattern_id, day_origin_utc
-    from {{ ref('stg_scheduled_trip') }}
-),
-
-passed as (
-    select
-        s.mode,
-        s.trip_id,
-        s.start_date,
-        s.service_date,
-        s.fetched_at as last_listed_at,
-        s.next_fetched_at as left_feed_at,
-        s.current_delay_s as trip_delay_at_exit,
-        p.stop_sequence,
-        p.stop_id,
-        p.arrival_s,
-        p.departure_s,
-        t.day_origin_utc,
-        s.stop_count - greatest(s.next_stop_count, 0) as dropped_with
-    from {{ ref('stg_rt_trip_state') }} s
-    join sched t
-        on t.trip_id = s.trip_id and t.service_date = s.service_date
-    join {{ ref('stg_pattern_stop') }} p
-        on p.pattern_id = t.pattern_id
-        and p.pos_from_end <= s.stop_count
-        and p.pos_from_end > s.next_stop_count
-    where s.next_fetched_at is not null
-        and s.trip_status not in ('CANCELED', 'REMOVED')
-        and (
-            s.next_trip_status is distinct from 'REMOVED'
-            or s.stop_count <= {{ var('ran_max_stops_left') }}
-        )
-    -- a stop count that rises again can pass a stop twice; keep the last
-    qualify row_number() over (
-        partition by s.mode, s.trip_id, s.start_date, p.stop_sequence
-        order by s.next_fetched_at desc
-    ) = 1
-),
-
-pred as (
-    select
-        mode, trip_id, start_date, stop_sequence, fetched_at,
-        arrival_time, arrival_delay_s, departure_delay_s,
-        stop_status, trip_delay_s
-    from {{ source('silver', 'stop_prediction') }}
-),
-
-joined as (
+-- Two more kinds of row have no real arrival time, both from the
+-- Sydney Trains feed (D-059), checked against vehicle positions on
+-- 26 Nov 2026. That feed never reports a train early: of 521,169
+-- train stop predictions none had a negative delay and 75% had 0. A
+-- 0 there means on time or early by an unknown amount (the train was
+-- at the stop a median 51 s before the timetable), so early_hidden is
+-- true; the delay is a ceiling, which still says the stop was not
+-- late. And at a train's origin the stop only drops out when the
+-- train has gone, with a stale departure estimate (6% of such
+-- arrivals had the train within 150 m). Both keep their row, with
+-- time_known false.
+{{ per_day() }}
+select * from (
+with joined as (
     select
         x.*,
-        r.fetched_at as prediction_row_at,
-        r.arrival_time as pred_arrival_time,
-        r.arrival_delay_s as pred_arrival_delay_s,
-        r.stop_status,
-        coalesce(r.arrival_delay_s, r.departure_delay_s) as row_delay_s,
-        r.trip_delay_s as row_trip_delay_s
-    from passed x
-    asof left join pred r
+        r.p.fetched_at as prediction_row_at,
+        r.p.arrival_time as pred_arrival_time,
+        r.p.arrival_delay_s as pred_arrival_delay_s,
+        r.p.stop_status as stop_status,
+        coalesce(r.p.arrival_delay_s, r.p.departure_delay_s) as row_delay_s,
+        r.p.trip_delay_s as row_trip_delay_s
+    from {{ ref('stg_stop_pass_last') }} x
+    left join {{ ref('stg_stop_pass_prediction') }} r
         on r.mode = x.mode
         and r.trip_id = x.trip_id
         and r.start_date = x.start_date
         and r.stop_sequence = x.stop_sequence
-        and x.left_feed_at > r.fetched_at
 ),
 
 final as (
@@ -133,8 +97,14 @@ select
         - epoch(sched_arrival_utc) as schedule_disagreement_s,
     case when predicted_arrival_utc > left_feed_at
         then 'capped_at_exit' else 'last_prediction' end as method,
+    {{ early_hidden() }} as early_hidden,
     not (
         predicted_arrival_utc > left_feed_at
         and dropped_with > {{ var('capped_group_max_stops') }}
-    ) as time_known
+    )
+    and not {{ early_hidden() }}
+    and not (at_origin and mode in {{ mode_list('untimed_origin_modes') }})
+        as time_known
 from timed
+) as day_rows
+{{ window_rows() }}
