@@ -24,6 +24,17 @@
 -- ran_max_stops_left stops were still listed; a trip that vanishes
 -- further from its end gives no arrivals for the stops it never
 -- reached.
+-- Two more kinds of row have no real arrival time, both from the
+-- Sydney Trains feed (D-059), checked against vehicle positions on
+-- 26 Nov 2026. That feed never reports a train early: of 521,169
+-- train stop predictions none had a negative delay and 75% had 0. A
+-- 0 there means on time or early by an unknown amount (the train was
+-- at the stop a median 51 s before the timetable), so early_hidden is
+-- true; the delay is a ceiling, which still says the stop was not
+-- late. And at a train's origin the stop only drops out when the
+-- train has gone, with a stale departure estimate (6% of such
+-- arrivals had the train within 150 m). Both keep their row, with
+-- time_known false.
 with sched as (
     select service_date, trip_id, pattern_id, day_origin_utc
     from {{ ref('stg_scheduled_trip') }}
@@ -42,6 +53,7 @@ passed as (
         p.stop_id,
         p.arrival_s,
         p.departure_s,
+        p.pos_from_start = 1 as at_origin,
         t.day_origin_utc,
         s.stop_count - greatest(s.next_stop_count, 0) as dropped_with
     from {{ ref('stg_rt_trip_state') }} s
@@ -133,8 +145,12 @@ select
         - epoch(sched_arrival_utc) as schedule_disagreement_s,
     case when predicted_arrival_utc > left_feed_at
         then 'capped_at_exit' else 'last_prediction' end as method,
+    {{ early_hidden() }} as early_hidden,
     not (
         predicted_arrival_utc > left_feed_at
         and dropped_with > {{ var('capped_group_max_stops') }}
-    ) as time_known
+    )
+    and not {{ early_hidden() }}
+    and not (at_origin and mode in {{ mode_list('untimed_origin_modes') }})
+        as time_known
 from timed

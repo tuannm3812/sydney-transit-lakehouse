@@ -44,3 +44,14 @@
         * pow(sin(radians({{ lon2 }} - {{ lon1 }}) / 2), 2)
     )))
 {%- endmacro %}
+
+{# A SQL list of the modes in a list variable, e.g. ('train'). #}
+{% macro mode_list(name) -%}
+    ('{{ var(name) | join("', '") }}')
+{%- endmacro %}
+
+{# A zero delay from a feed that never reports early running (D-059). #}
+{% macro early_hidden() -%}
+    (mode in {{ mode_list('no_early_modes') }}
+        and predicted_arrival_utc <= left_feed_at and row_delay_s = 0)
+{%- endmacro %}

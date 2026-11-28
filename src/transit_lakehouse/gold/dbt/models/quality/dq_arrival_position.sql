@@ -3,6 +3,8 @@
 -- arrival, take the trip's positions just before and just after it
 -- (each at most 30 s away) and measure how far the nearer one is from
 -- the stop. If the arrival times are right, the bus is at the stop.
+-- Only arrivals that claim a time are checked (time_known, D-054 and
+-- D-059).
 with arr as (
     select
         a.service_date,
@@ -16,7 +18,7 @@ with arr as (
     join {{ ref('stg_service_day') }} d using (service_date)
     join {{ source('silver', 'timetable_stop') }} s
         on s.version = d.version and s.stop_id = a.stop_id
-    where not a.skipped
+    where not a.skipped and a.time_known
 ),
 
 pos as (

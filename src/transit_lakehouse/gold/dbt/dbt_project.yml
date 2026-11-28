@@ -50,6 +50,11 @@ vars:
   # starting with this) and trip ids seen for less than this (D-059).
   unplanned_route_prefix: "RTTA"
   min_trip_seen_minutes: 5
+  # Feeds that never report a vehicle early, so a zero delay is on time
+  # or early; and modes whose origin arrival is a stale departure
+  # estimate. Neither gives a real arrival time (D-059).
+  no_early_modes: ["train"]
+  untimed_origin_modes: ["train"]
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 

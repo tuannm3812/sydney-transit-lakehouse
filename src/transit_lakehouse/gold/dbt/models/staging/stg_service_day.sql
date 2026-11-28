@@ -9,11 +9,16 @@
 -- earliest is used and flagged.
 -- The day before each realtime start date is included, because TfNSW
 -- dates a trip that runs after midnight by the calendar day
--- (stg_rt_trip_state).
+-- (stg_rt_trip_state). A feed that sends no start_date (Sydney Trains,
+-- D-059) adds the Sydney dates it was fetched on, so a day carried only
+-- by such trips still has its timetable.
 with rt_days as (
-    select distinct {{ gtfs_date('start_date') }} as d
+    select distinct
+        coalesce(
+            {{ gtfs_date('start_date') }},
+            timezone('{{ var("sydney_tz") }}', fetched_at)::date
+        ) as d
     from {{ source('silver', 'trip_status') }}
-    where start_date is not null
 ),
 
 days as (
