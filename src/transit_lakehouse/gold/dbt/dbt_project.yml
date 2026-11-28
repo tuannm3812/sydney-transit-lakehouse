@@ -50,6 +50,9 @@ vars:
   # starting with this) and trip ids seen for less than this (D-059).
   unplanned_route_prefix: "RTTA"
   min_trip_seen_minutes: 5
+  # ...and, for these modes, trip ids no published timetable lists
+  # (Mike, 28 Nov 2026, D-059).
+  unlisted_trip_modes: ["train"]
   # Feeds that never report a vehicle early, so a zero delay is on time
   # or early; and modes whose origin arrival is a stale departure
   # estimate. Neither gives a real arrival time (D-059).

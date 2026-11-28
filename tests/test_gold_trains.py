@@ -8,7 +8,8 @@ stop (no stop_sequence), never a negative delay (an early train reads
 T1 runs four stops from 08:00. It is listed with a 60 s delay at its
 origin, 0 at S2 (it was early) and 90 s at S3 and S4. Gold must date it
 from the timetable, place each stop by its stop id, and keep the origin
-and the zero-delay stop as arrivals with no time.
+and the zero-delay stop as arrivals with no time. X9 is a train the
+feed reports that no timetable lists: trip match counts it apart.
 """
 
 from __future__ import annotations
@@ -104,6 +105,14 @@ def snapshot(t: datetime) -> bytes:
             stu.stop_id = f"S{i}"  # and no stop_sequence
             stu.arrival.delay = DELAY[i]
             stu.arrival.time = int(sched(i).timestamp()) + DELAY[i]
+    if at("07:50") <= t <= at("08:20"):
+        ent = msg.entity.add()
+        ent.id = "X9"
+        tu = ent.trip_update
+        tu.trip.trip_id = "X9"  # in no published timetable
+        stu = tu.stop_time_update.add()
+        stu.stop_id = "S2"
+        stu.arrival.delay = 0
     return msg.SerializeToString()
 
 
@@ -136,8 +145,9 @@ def query(db, sql: str) -> list[tuple]:
 def test_a_train_run_is_dated_from_the_timetable(db) -> None:
     assert query(
         db,
-        "select start_date, timetable_dated from staging.stg_rt_run",
-    ) == [("20261118", True)]
+        "select trip_id, start_date, timetable_dated"
+        " from staging.stg_rt_run order by 1",
+    ) == [("T1", "20261118", True), ("X9", "20261118", False)]
     assert query(
         db,
         "select distinct mode, start_date, service_date::varchar"
@@ -181,3 +191,11 @@ def test_a_hidden_early_stop_still_counts_as_on_time(db) -> None:
         " from gold.mart_route_reliability"
         " where route_id = 'T1R' and service_date = '2026-11-18'",
     ) == [(3, 1.0)]
+
+
+def test_a_train_no_timetable_lists_is_counted_apart(db) -> None:
+    assert query(
+        db,
+        "select mode, realtime_trips, matched_trips, unlisted_trips"
+        " from gold.dq_trip_match",
+    ) == [("train", 1, 1, 1)]
