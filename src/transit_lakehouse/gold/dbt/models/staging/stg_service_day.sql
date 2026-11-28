@@ -31,7 +31,8 @@ days as (
 windowed as (
     select service_date, {{ service_day_origin('service_date') }} as day_origin_utc
     from days
-    where service_date is not null {{ in_service_window('service_date') }}
+    where service_date is not null
+        {{ in_service_window('service_date', days_before=1) }}
 ),
 
 versions as (

@@ -29,11 +29,34 @@
     end
 {%- endmacro %}
 
-{% macro in_service_window(col) -%}
+{# The service_date_from/to window as extra where-terms. days_before
+   widens it at the start: the timetable of the day before is needed to
+   move that day's after-midnight trips back to it (I-21). #}
+{% macro in_service_window(col, days_before=0) -%}
     {%- set lo = var("service_date_from") -%}
     {%- set hi = var("service_date_to") -%}
-    {%- if lo %} and {{ col }} >= date '{{ lo }}'{% endif -%}
+    {%- if lo %} and {{ col }} >= date '{{ lo }}'
+        - interval {{ days_before }} day{% endif -%}
     {%- if hi %} and {{ col }} <= date '{{ hi }}'{% endif -%}
+{%- endmacro %}
+
+{# A model that holds one row set per service day (D-060). A windowed
+   build (service_date_from/to) replaces only the days in its window and
+   keeps the rest, so a nightly build reads one day of silver however
+   long the history grows (I-23). Without a window it replaces every day
+   it produces. #}
+{% macro per_day(key="service_date") -%}
+    {{ config(
+        materialized="incremental",
+        incremental_strategy="delete+insert",
+        unique_key=key,
+        on_schema_change="sync_all_columns"
+    ) }}
+{%- endmacro %}
+
+{# Closes a per_day model: keeps only the build window's days. #}
+{% macro window_rows(sql_col="service_date") -%}
+    where true {{ in_service_window(sql_col) }}
 {%- endmacro %}
 
 {# Great-circle distance in metres. #}

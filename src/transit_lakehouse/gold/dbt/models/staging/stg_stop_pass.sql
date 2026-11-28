@@ -33,6 +33,7 @@ passes as (
         and p.pos_from_end <= s.stop_count
         and p.pos_from_end > s.next_stop_count
     where s.next_fetched_at is not null
+        {{ in_service_window('s.service_date') }}
         and s.trip_status not in ('CANCELED', 'REMOVED')
         and (
             s.next_trip_status is distinct from 'REMOVED'

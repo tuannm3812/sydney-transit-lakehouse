@@ -125,6 +125,7 @@ def make_db(path: Path, days: tuple[date, ...] = (D1, D2)) -> Path:
                         [feed, mode, left],
                     )
     remart(con)
+    retrip(con)
     con.execute(
         """
         create table gold.dq_trip_match as
@@ -204,7 +205,50 @@ def db(tmp_path: Path) -> Path:
     return make_db(tmp_path / "transit.duckdb")
 
 
+def retrip(con: duckdb.DuckDBPyConnection) -> None:
+    """gold.dq_trip_left from the staging and bronze rows, as dbt does."""
+    con.execute(
+        """
+        create or replace table gold.dq_trip_left as
+        with removals as (
+            select service_date, feed, mode, fetched_at,
+                count(*) as removed,
+                count(*) filter (coalesce(stop_count, -1) <> 0)
+                    as with_stops
+            from staging.stg_rt_trip_state
+            where trip_status = 'REMOVED' group by all
+        ),
+        snaps as (
+            select feed, fetched_at, entities,
+                lag(entities) over (partition by feed order by fetched_at)
+                    as prev_entities
+            from bronze.snapshot
+            where kind = 'trip_updates'
+                and (decode_error is null
+                    or decode_error like 'partial_decode%')
+        ),
+        joined as (
+            select r.*, s.entities, s.prev_entities,
+                s.prev_entities >= 50
+                    and r.removed / s.prev_entities > 0.5 as mass
+            from removals r
+            left join snaps s
+                on s.feed = r.feed and s.fetched_at = r.fetched_at
+        )
+        select service_date, mode, sum(removed) as removed_rows,
+            sum(with_stops) as removed_with_stops,
+            max(removed / prev_entities) filter (prev_entities > 0)
+                as worst_removed_share,
+            count(*) filter (mass and entities > 0) as mass_endings,
+            count(*) filter (mass and entities = 0) as empty_endings
+        from joined group by all
+        """
+    )
+
+
 def run(db: Path, **kw) -> dict:
+    with duckdb.connect(str(db)) as con:
+        retrip(con)
     with duckdb.connect(str(db), read_only=True) as con:
         return gate.run_gate(con, **kw)
 

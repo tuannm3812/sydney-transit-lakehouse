@@ -9,6 +9,8 @@
 -- 26 Nov 2026, none in any timetable), and trip ids the feed shows for
 -- less than min_trip_seen_minutes (mostly one snapshot, a placeholder
 -- the feed replaces at once).
+{{ per_day() }}
+select * from (
 with rt as (
     select
         mode,
@@ -39,3 +41,5 @@ from rt
 left join {{ ref('stg_scheduled_trip') }} s
     on s.trip_id = rt.trip_id and s.service_date = rt.service_date
 group by all
+) as day_rows
+{{ window_rows() }}

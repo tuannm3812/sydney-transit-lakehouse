@@ -55,11 +55,20 @@ vars:
   # estimate. Neither gives a real arrival time (D-059).
   no_early_modes: ["train"]
   untimed_origin_modes: ["train"]
+  # dq_trip_left: a snapshot that ends more than this share of the
+  # trips the feed carried, with at least this many, is a mass ending.
+  mass_removal_share: 0.5
+  mass_removal_min_trips: 50
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 
 models:
   transit_gold:
+    # Write each model's table to disk before the next starts, so its
+    # pages can leave the 300 MB buffer pool (I-23).
+    +post-hook:
+      - sql: "checkpoint"
+        transaction: false
     staging:
       +schema: staging
       +materialized: view

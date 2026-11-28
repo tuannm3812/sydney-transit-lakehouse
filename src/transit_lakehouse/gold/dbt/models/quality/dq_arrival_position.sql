@@ -5,6 +5,8 @@
 -- the stop. If the arrival times are right, the bus is at the stop.
 -- Only arrivals that claim a time are checked (time_known, D-054 and
 -- D-059).
+{{ per_day() }}
+select * from (
 with arr as (
     select
         a.service_date,
@@ -65,3 +67,5 @@ select
     avg((metres <= 150)::int) as within_150m_share
 from measured
 group by all
+) as day_rows
+{{ window_rows() }}

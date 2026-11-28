@@ -35,6 +35,8 @@
 -- train has gone, with a stale departure estimate (6% of such
 -- arrivals had the train within 150 m). Both keep their row, with
 -- time_known false.
+{{ per_day() }}
+select * from (
 with joined as (
     select
         x.*,
@@ -104,3 +106,5 @@ select
     and not (at_origin and mode in {{ mode_list('untimed_origin_modes') }})
         as time_known
 from timed
+) as day_rows
+{{ window_rows() }}

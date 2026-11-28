@@ -106,7 +106,7 @@ Built in the cloud on replayed S3 hours while the Phase 0 gate runs (D-042); not
 - [ ] The gold window keeps the day before (I-21)
 - [x] Trains judged: runs dated from the timetable, stops by stop id, hidden-early and origin arrivals carry no time (D-059); every train bar passes on 25 and 26 Nov
 - [ ] Light rail arrivals (O-04)
-- [ ] Gold build fits the host's 300 MB on a real day (I-23, Phase 2 item 10)
+- [x] Gold builds one service day at a time and fits the host's 300 MB (I-23, D-060)
 - [ ] Live radar from the latest trip updates (after the worker is live)
 - [ ] Dashboard host and portfolio link (Mike's choice)
 - [ ] Hand-check of 20 trips on backfilled history (the gate): pass at 18 of 20 with no pipeline miss (D-046)

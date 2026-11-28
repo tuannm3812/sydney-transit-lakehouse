@@ -3,6 +3,8 @@
 -- more on one service day. One short gap at one stop is often a
 -- prediction blip; a pair that stays together for several stops is
 -- what a rider waiting further down the route sees.
+{{ per_day() }}
+select * from (
 with h as (
     select * from {{ ref('fct_headway') }}
     where scheduled_headway_s <> 0
@@ -55,3 +57,5 @@ select
     round(stops_bunched / stops_paired, 3) as share_of_stops
 from pairs
 where stops_bunched >= {{ var('bunch_min_stops') }}
+) as day_rows
+{{ window_rows() }}

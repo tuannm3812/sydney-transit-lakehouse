@@ -1,3 +1,4 @@
+{{ config(materialized="table") }}
 -- Every trip the timetable in effect schedules on each service day,
 -- with its route, operator, mode, region and UTC start and end.
 with day as (

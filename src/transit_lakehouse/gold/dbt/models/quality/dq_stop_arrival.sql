@@ -3,6 +3,8 @@
 -- feed's scheduled time agreeing with the timetable's to the minute,
 -- and the last prediction not later than the poll that dropped the
 -- stop (the rest are capped there, fct_stop_arrival).
+{{ per_day() }}
+select * from (
 select
     service_date,
     mode,
@@ -17,3 +19,5 @@ select
     avg((method = 'capped_at_exit')::int) as capped_share
 from {{ ref('fct_stop_arrival') }}
 group by all
+) as day_rows
+{{ window_rows() }}

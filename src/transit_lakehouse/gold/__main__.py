@@ -3,6 +3,8 @@
     python -m transit_lakehouse.gold build             # views + dbt build
     python -m transit_lakehouse.gold build --since 2026-11-17 \\
         --vars '{"outcome_grace_minutes": 20}'
+    python -m transit_lakehouse.gold build --day 2026-11-29   # nightly
+    python -m transit_lakehouse.gold build --day 2026-11-17 2026-11-18
     python -m transit_lakehouse.gold views             # views only
     python -m transit_lakehouse.gold dq                # last run's results
     python -m transit_lakehouse.gold handcheck --service-date 2026-11-24
@@ -28,7 +30,7 @@ import json
 import logging
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
@@ -122,6 +124,32 @@ def build(
             n = dq.record(con, results, window)
         log.info("recorded %d results in %s", n, dq.DQ_TABLE)
     return 0 if ok else 1
+
+
+def build_days(
+    data_dir: Path,
+    days: list[date],
+    variables: dict,
+    select: list[str] | None,
+) -> int:
+    """Build each Sydney service day on its own, oldest first (D-060).
+
+    A day's trips run from its local midnight (13:00 or 14:00 UTC the
+    day before) to the 3-hour grace after its last trip, so the silver
+    files from the UTC date before it on cover it. The per-day models
+    replace that day only; the rest of the history stays.
+    """
+    worst = 0
+    for day in sorted(days):
+        day_vars = {
+            **variables,
+            "service_date_from": day.isoformat(),
+            "service_date_to": day.isoformat(),
+        }
+        log.info("building service day %s", day)
+        rc = build(data_dir, day - timedelta(days=1), day_vars, select)
+        worst = max(worst, rc)
+    return worst
 
 
 def last_results(data_dir: Path) -> str:
@@ -227,6 +255,12 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.choices["build"]
     b.add_argument("--vars", default="{}", help="dbt vars, as JSON")
     b.add_argument("--select", nargs="+", help="dbt node selection")
+    b.add_argument(
+        "--day",
+        type=date.fromisoformat,
+        nargs="+",
+        help="build these Sydney service days, one at a time (D-060)",
+    )
     sub.add_parser("dq", help="results of the last build")
     h = sub.add_parser("handcheck", help="ghost trip hand-check sheet")
     h.add_argument("--service-date", type=date.fromisoformat, required=True)
@@ -286,7 +320,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_gate(args)
     if args.cmd == "gate-report":
         return gate_report.run(args)
-    return build(args.data_dir, args.since, json.loads(args.vars), args.select)
+    variables = json.loads(args.vars)
+    if args.day:
+        if args.since:
+            parser.error("--day sets the files read; drop --since")
+        return build_days(args.data_dir, args.day, variables, args.select)
+    return build(args.data_dir, args.since, variables, args.select)
 
 
 if __name__ == "__main__":

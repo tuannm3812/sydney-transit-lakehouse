@@ -77,8 +77,6 @@ SHARE_TEST = "share_at_least"
 GATE_DAYS = 7
 CAPTURE_BAR = 0.95
 LEFT_FEED_BAR = 0.90
-MASS_REMOVAL_SHARE = 0.5
-MASS_REMOVAL_MIN_TRIPS = 50
 OPERATOR_DROP_MIN_TRIPS = 20
 GOOD_STATUSES = {"pass", "success"}
 # Bars measured from vehicle positions: expected for modes with that feed.
@@ -520,20 +518,21 @@ def check_operators(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
 
 
 def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
-    """D-036: REMOVED rows present, well formed, and no mass endings."""
+    """D-036: REMOVED rows present, well formed, and no mass endings.
+
+    Read from gold.dq_trip_left, which the build keeps per day (D-060).
+    """
     out = []
-    removed = dict(
-        (m, (n, bad))
-        for m, n, bad in _rows(
+    stats = {
+        m: rest
+        for m, *rest in _rows(
             con,
-            "select mode, count(*),"
-            " count(*) filter (coalesce(stop_count, -1) <> 0)"
-            " from staging.stg_rt_trip_state"
-            " where trip_status = 'REMOVED' and service_date = ?"
-            " group by 1",
+            "select mode, removed_rows, removed_with_stops,"
+            " worst_removed_share, mass_endings, empty_endings"
+            " from gold.dq_trip_left where service_date = ?",
             (day,),
         )
-    )
+    }
     seen = _rows(
         con,
         "select mode, count(*),"
@@ -545,7 +544,7 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
         (day,),
     )
     for mode, ran, left in seen:
-        n, bad = removed.get(mode, (0, 0))
+        n, bad, worst, bursts, empties = stats.get(mode, (0, 0, None, 0, 0))
         out.append(
             Check(
                 "trip_left:rows",
@@ -572,42 +571,8 @@ def check_trip_left(con: duckdb.DuckDBPyConnection, day: date) -> list[Check]:
                 detail=f"{left:,} of {ran:,} trips seen to run left the feed",
             )
         )
-    mass = _rows(
-        con,
-        """
-        with removals as (
-            select feed, mode, fetched_at, count(*) as removed
-            from staging.stg_rt_trip_state
-            where trip_status = 'REMOVED' and service_date = ?
-            group by all
-        ),
-        snaps as (
-            select feed, fetched_at, entities,
-                lag(entities) over (partition by feed order by fetched_at)
-                    as prev_entities
-            from bronze.snapshot
-            where kind = 'trip_updates'
-                and (decode_error is null
-                    or decode_error like 'partial_decode%')
-        )
-        select r.mode,
-            max(r.removed / s.prev_entities) as worst,
-            count(*) filter (
-                r.removed / s.prev_entities > ?
-                and s.prev_entities >= ? and s.entities > 0
-            ) as bursts,
-            count(*) filter (
-                r.removed / s.prev_entities > ?
-                and s.prev_entities >= ? and s.entities = 0
-            ) as empties
-        from removals r
-        join snaps s on s.feed = r.feed and s.fetched_at = r.fetched_at
-        where s.prev_entities > 0
-        group by 1 order by 1
-        """,
-        (day, *(MASS_REMOVAL_SHARE, MASS_REMOVAL_MIN_TRIPS) * 2),
-    )
-    for mode, worst, bursts, empties in mass:
+        if worst is None:
+            continue
         out.append(
             Check(
                 "trip_left:burst",

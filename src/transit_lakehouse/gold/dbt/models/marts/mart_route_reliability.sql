@@ -3,6 +3,8 @@
 -- A route of a network that spans regions can have trips of both in
 -- one hour (an intercity line from Central and from Gosford), so stop
 -- and gap figures are grouped by mode and region too, as the trips are.
+{{ per_day() }}
+select * from (
 with trips as (
     select
         *,
@@ -79,3 +81,5 @@ select
 from trip_counts c
 left join stops s using (service_date, mode, region, route_id, local_hour)
 left join gaps g using (service_date, mode, region, route_id, local_hour)
+) as day_rows
+{{ window_rows() }}

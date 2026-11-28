@@ -52,7 +52,16 @@ docker compose --profile worker run --rm --no-deps worker status
 free -m && docker compose ps
 ```
 
-It carries on from the backfill's watermarks with the local raw files (the prune keeps 3 days), so the last backfilled hour and the first live one join without a gap. Then turn on the nightly gold build (D-039), never at the same time as a backfill. Until I-21 is fixed it builds without a service-date window; a full-history build under the 900 MB cap has not been measured yet, so watch the first one.
+It carries on from the backfill's watermarks with the local raw files (the prune keeps 3 days), so the last backfilled hour and the first live one join without a gap. Then turn on the nightly gold build (D-039), never at the same time as a backfill. It builds one service day at a time (D-060): a full-history build does not fit the 300 MB DuckDB limit (I-23). First build the history once, oldest day first, then each night the day before:
+
+```bash
+# once, after go-live: every day since the archive starts (about 3 to 4 min a day)
+docker compose --profile gold run --rm gold build --day $(python3 -c "import datetime as d; s=d.date(2026,11,17); print(' '.join(str(s+d.timedelta(n)) for n in range((d.date.today()-s).days)))")
+# nightly, after 06:00 Sydney (the 3-hour grace after the last trip has passed)
+docker compose --profile gold run --rm gold build --day $(TZ=Australia/Sydney date -d yesterday +%F)
+```
+
+Each day reads only the silver files from the UTC date before it, and replaces only that day in the per-day tables. A day built again replaces itself, so a failed night is fixed by building that day again.
 
 **Undo.** `docker compose --profile worker stop worker` stops the worker and leaves the collector alone. Raw files and S3 are never changed by steps 3 and 4. A bad build is redone by stopping the worker and deleting `data/lakehouse/` and `data/backfill/` (a delete on the server, so it needs its own approval), then step 3 again.
 

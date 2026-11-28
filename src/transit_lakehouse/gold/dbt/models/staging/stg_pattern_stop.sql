@@ -1,3 +1,4 @@
+{{ config(materialized="table") }}
 -- Timetable stop patterns (D-029) with each stop's position counted
 -- from the end. Realtime trip updates list a trip's remaining stops as
 -- a contiguous run ending at its last stop (checked on 17 Nov: 9,495
