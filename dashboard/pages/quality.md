@@ -86,7 +86,8 @@ select
         as status,
     resource_type as kind, node, failures, seconds
 from transit.quality
-order by status = 'passed', kind desc, node
+-- Raw status here: in ORDER BY, DuckDB reads the source column.
+order by status in ('pass', 'success'), kind desc, node
 ```
 
 <DataTable data={checks} emptySet=pass emptyMessage="No checks recorded" rows=50 search=true>

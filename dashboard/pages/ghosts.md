@@ -144,8 +144,9 @@ select
     agency_name as operator,
     case ghost_kind when 'missing' then 'never seen' else ghost_kind end as kind,
     confidence,
-    stops_done,
-    stop_count,
+    case when ghost_kind = 'vanished'
+        then stops_done || ' of ' || stop_count
+        else '0 of ' || stop_count end as stops_passed,
     trip_id
 from transit.ghost_trips
 where mode_name like '${inputs.mode.value}'
@@ -159,11 +160,10 @@ order by service_date desc, due
   <Column id=due title="Due" />
   <Column id=mode title="Mode" />
   <Column id=route title="Route" />
-  <Column id=towards title="Towards" />
+  <Column id=towards title="Towards" wrap=true />
   <Column id=operator title="Operator" />
   <Column id=kind title="Kind" />
   <Column id=confidence title="Confidence" />
-  <Column id=stops_done title="Stops passed" fmt=num0 />
-  <Column id=stop_count title="Stops" fmt=num0 />
+  <Column id=stops_passed title="Stops passed" align=right />
   <Column id=trip_id title="Trip id" />
 </DataTable>

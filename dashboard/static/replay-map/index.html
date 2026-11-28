@@ -101,6 +101,14 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.AttributionControl({ compact: true }),
   'top-left');
+// MapLibre opens a compact credit on wide screens; start it folded to
+// the (i) button, which still shows the credit on click.
+map.on('load', () => document
+  .querySelectorAll('.maplibregl-ctrl-attrib.maplibregl-compact-show')
+  .forEach((el) => {
+    el.classList.remove('maplibregl-compact-show');
+    el.removeAttribute('open');
+  }));
 const overlay = new deck.MapboxOverlay({ layers: [] });
 map.addControl(overlay);
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -145,7 +153,7 @@ function draw() {
   }
   $('clock').textContent = sydneyClock(epoch);
   const pairs = hot.size / 2 | 0;
-  $('count').textContent = `${now.length} vehicle${now.length === 1 ? '' : 's'}` +
+  $('count').textContent = `${now.length} vehicle${now.length === 1 ? '' : 's'} on the map` +
     (pairs ? `, ${pairs} bunched pair${pairs === 1 ? '' : 's'}` : '');
   overlay.setProps({ layers: [
     new deck.TripsLayer({
@@ -206,7 +214,7 @@ async function loadDay(day) {
   for (const h of entry.hours) {
     const o = document.createElement('option');
     o.value = h.file; o.textContent =
-      `${String(h.hour).padStart(2, '0')}:00 (${h.vehicles} vehicles)`;
+      `${String(h.hour).padStart(2, '0')}:00 (${h.vehicles} vehicles in the hour)`;
     sel.appendChild(o);
   }
   const peak = entry.hours.findIndex((h) => h.hour === 8);
