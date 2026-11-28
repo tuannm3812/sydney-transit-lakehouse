@@ -67,7 +67,7 @@ TABLES: dict[str, str] = {
     """,
     # Hot spots with enough gaps to judge (the map only).
     "bunching_hotspots": """
-        select * from gold.mart_bunching_hotspot
+        select * from public_hotspot
         where headways >= 3 and stop_lat is not null
     """,
     # Every gap, for the by-hour chart: the map's filter would drop
@@ -78,7 +78,7 @@ TABLES: dict[str, str] = {
             sum(headways) as headways,
             sum(bunched) as bunched,
             sum(overtaken) as overtaken
-        from gold.mart_bunching_hotspot
+        from public_hotspot
         group by all
     """,
     "bunching_events": """
@@ -102,10 +102,62 @@ TABLES: dict[str, str] = {
 }
 
 
+# The two bunching tables read ``public_hotspot``: the hot-spot mart
+# as built, or, for a windowed publish, the same aggregate over the
+# window's days only (the mart sums every day built, and I-21 makes a
+# build start a day early). Keep it in step with
+# models/products/mart_bunching_hotspot.sql.
+WINDOWED_HOTSPOT = """
+    with h as (
+        select
+            h.*,
+            case when isodow(h.service_date) >= 6 then 'weekend'
+                else 'weekday' end as day_type,
+            hour(timezone('Australia/Sydney', h.observed_arrival_utc))
+                as local_hour
+        from gold.fct_headway h
+        where h.scheduled_headway_s <> 0{window}
+    ),
+    agg as (
+        select
+            mode,
+            region,
+            route_id,
+            any_value(route_short_name) as route_short_name,
+            direction_id,
+            stop_id,
+            day_type,
+            local_hour,
+            count(distinct service_date) as service_days,
+            count(*) as headways,
+            count(*) filter (bunched) as bunched,
+            count(*) filter (overtaken) as overtaken,
+            round(avg(bunched::int), 4) as bunched_share,
+            round(median(observed_headway_s / abs(scheduled_headway_s)), 3)
+                as median_gap_ratio,
+            round(median(abs(scheduled_headway_s))) as median_scheduled_s,
+            round(median(observed_headway_s)) as median_observed_s
+        from h
+        group by mode, region, route_id, direction_id, stop_id, day_type,
+            local_hour
+    ),
+    stops as (
+        select
+            stop_id,
+            any_value(stop_name) as stop_name,
+            any_value(stop_lat) as stop_lat,
+            any_value(stop_lon) as stop_lon
+        from gold.mart_bunching_hotspot
+        group by stop_id
+    )
+    select a.*, s.stop_name, s.stop_lat, s.stop_lon
+    from agg a
+    left join stops s using (stop_id)
+"""
+
 # Tables with one row per service day or finer; ``date_from`` and
-# ``date_to`` keep only those days. The bunching hot spots and the
-# by-hour chart sum every day built, so a build for the site should
-# already end on the last complete day (``service_date_to``).
+# ``date_to`` keep only those days. ``quality`` is the build's own test
+# run and is published whole.
 DATED = {
     "service_days",
     "route_honesty",
@@ -129,10 +181,18 @@ def publish(
     tables, so the site never reports a half-collected day.
     """
     out.mkdir(parents=True, exist_ok=True)
+    window = _window(date_from, date_to)
+    hotspot = (
+        WINDOWED_HOTSPOT.format(
+            window=window.replace("service_date", "h.service_date")
+        )
+        if window
+        else "select * from gold.mart_bunching_hotspot"
+    )
+    con.execute(f"create or replace temp view public_hotspot as {hotspot}")
     rows = {}
     for name, sql in TABLES.items():
-        if name in DATED and (date_from or date_to):
-            window = _window(date_from, date_to)
+        if name in DATED and window:
             sql = f"select * from ({sql}) where true{window}"
         path = out / f"{name}.parquet"
         tmp = path.with_suffix(".parquet.tmp")

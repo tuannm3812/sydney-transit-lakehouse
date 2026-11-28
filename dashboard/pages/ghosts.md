@@ -75,8 +75,9 @@ Routes with at least ten checked trips in the selection. The share is out of the
 ```sql routes
 select
     mode_name,
-    route_short_name as route,
-    agency_name as operator,
+    upper(region[1]) || region[2:] as region,
+    any_value(route_short_name) as route,
+    any_value(agency_name) as operator,
     sum(trips_judged) as trips_checked,
     sum(trips_missing) as never_seen,
     sum(trips_missing_high) as never_seen_high_confidence,
@@ -85,7 +86,8 @@ select
 from transit.route_honesty
 where mode_name like '${inputs.mode.value}'
     and service_date::varchar like '${inputs.day.value}'
-group by all
+-- One route is mode, region and route id (D-035).
+group by mode_name, region, route_id
 having sum(trips_judged) >= 10 and sum(trips_missing + trips_vanished) > 0
 order by sum(trips_missing + trips_vanished) desc, ghost_share desc
 limit 50
@@ -93,6 +95,7 @@ limit 50
 
 <DataTable data={routes} emptySet=pass emptyMessage="No route lost a trip in this selection" rows=15 search=true>
   <Column id=mode_name title="Mode" />
+  <Column id=region title="Region" />
   <Column id=route title="Route" />
   <Column id=operator title="Operator" />
   <Column id=trips_checked title="Checked" fmt=num0 />

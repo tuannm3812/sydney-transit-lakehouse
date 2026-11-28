@@ -17,8 +17,8 @@ sidebar_position: 3
 
 <div class="lede">
   <span class="eyebrow">Bunching radar</span>
-  <h1 class="question">Where do buses arrive in clumps?</h1>
-  <p class="context">A gap between two consecutive buses at a stop is <b>bunched</b> when it is under a third of the gap the timetable planned between the same two trips. A <b>bunch</b> is a pair that stays bunched for three or more stops, so riders further down the route wait longer, then see two buses at once.</p>
+  <h1 class="question">Where do vehicles arrive in clumps?</h1>
+  <p class="context">A gap between two consecutive vehicles on a route at a stop is <b>bunched</b> when it is under a third of the gap the timetable planned between the same two trips. A <b>bunch</b> is a pair that stays bunched for three or more stops, so riders further down the route wait longer, then see two at once. Buses, Metro and ferries are measured; light rail is not yet.</p>
 </div>
 
 ```sql day_types
@@ -80,15 +80,23 @@ having sum(headways) >= 10 and sum(bunched) >= 3
 ## When it happens
 
 ```sql by_hour
-select
-    lpad(local_hour::varchar, 2, '0') || ':00' as hour,
-    mode_name,
-    sum(headways) as gaps,
-    sum(bunched) / sum(headways) as bunched_share
-from transit.bunching_by_hour
-where day_type like '${inputs.day_type.value}'
-group by all
-having sum(headways) >= 50 and sum(bunched) > 0
+-- Every hour with enough gaps, for each mode that bunched at all in
+-- the selection: a quiet hour with no bunching stays on the chart.
+with hours as (
+    select
+        lpad(local_hour::varchar, 2, '0') || ':00' as hour,
+        mode_name,
+        sum(headways) as gaps,
+        sum(bunched) as bunched,
+        sum(bunched) / sum(headways) as bunched_share
+    from transit.bunching_by_hour
+    where day_type like '${inputs.day_type.value}'
+    group by all
+)
+select hour, mode_name, gaps, bunched_share
+from hours
+where gaps >= 50
+qualify sum(bunched) over (partition by mode_name) > 0
 order by hour
 ```
 

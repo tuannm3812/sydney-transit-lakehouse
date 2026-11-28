@@ -426,7 +426,21 @@ def test_publish_window_drops_edge_days(db: Path, tmp_path: Path) -> None:
     assert after["service_days"] == 0
     assert after["bunching_events"] == 0
     assert after["quality"] == inside["quality"] > 0
-    assert after["bunching_hotspots"] == inside["bunching_hotspots"]
+    # The bunching tables are windowed too (I-21 builds start a day
+    # early), and a window over every day matches the mart as built.
+    assert after["bunching_hotspots"] == 0
+    assert after["bunching_by_hour"] == 0
+    whole = tmp_path / "whole"
+    with duckdb.connect(str(db)) as con:
+        publish.publish(con, whole)
+    for name in ("bunching_hotspots", "bunching_by_hour"):
+        a = f"read_parquet('{whole / name}.parquet')"
+        b = f"read_parquet('{out / name}.parquet')"
+        [(diff,)] = duckdb.sql(
+            f"select count(*) from ((from {a} except all from {b})"
+            f" union all (from {b} except all from {a}))"
+        ).fetchall()
+        assert diff == 0, name
 
 
 def test_bunching_by_hour_keeps_every_gap(db: Path, tmp_path: Path) -> None:

@@ -52,14 +52,16 @@ from transit.bunching_events
 
 ```sql worst_route
 select
-    route_short_name as route,
-    agency_name as operator,
+    any_value(route_short_name) as route,
+    any_value(agency_name) as operator,
     sum(trips_missing + trips_vanished) as ghosts,
     sum(trips_judged) as checked,
     format('{:,}', sum(trips_missing + trips_vanished)::bigint) as ghosts_label,
     format('{:,}', sum(trips_judged)::bigint) as checked_label
 from transit.route_honesty
-group by all
+-- One route is mode, region and route id: a short name and operator
+-- can repeat across regions (D-035).
+group by mode, region, route_id
 having sum(trips_judged) >= 10
 order by ghosts desc, checked
 limit 1
@@ -95,7 +97,7 @@ limit 1
 {/if}
 
 {#if totals[0].service_days < 7}
-<p class="notice"><b>Early results.</b> This edition covers {totals[0].service_days} service days, {totals[0].first_label} to {totals[0].last_label}, rebuilt from the raw archive. A few days are not a pattern, so treat route rankings as leads, not verdicts.</p>
+<p class="notice"><b>Early results.</b> This edition covers {totals[0].service_days} service {totals[0].service_days === 1 ? 'day' : 'days'}, {totals[0].first_label} to {totals[0].last_label}. A few days are not a pattern, so treat route rankings as leads, not verdicts.</p>
 {/if}
 
 {/if}

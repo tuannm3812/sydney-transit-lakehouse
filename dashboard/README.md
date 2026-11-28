@@ -11,7 +11,7 @@ Only the public extract, never the gold database or silver:
 | Gold build | `python -m transit_lakehouse.gold build` | `data/gold/transit.duckdb` |
 | Public extract | `python -m transit_lakehouse.gold publish` | `data/gold/public/*.parquet`, the tables listed in `transit_lakehouse/gold/publish.py` |
 
-A build for the site covers complete service days only. The first and last days of a run are partly captured, so build gold ending on the last complete day and publish only the complete days, for example `gold build --vars '{"service_date_from": "2026-11-21", "service_date_to": "2026-11-23"}'` (a day early at the start, incident I-21) then `gold publish --from 2026-11-22 --to 2026-11-23`. The hot spots and the by-hour chart sum every day in the build, so they keep the first day's few late trips.
+A build for the site covers complete service days only. The first and last days of a run are partly captured, so build gold ending on the last complete day and publish only the complete days, for example `gold build --vars '{"service_date_from": "2026-11-21", "service_date_to": "2026-11-23"}'` (a day early at the start, incident I-21) then `gold publish --from 2026-11-22 --to 2026-11-23`. Every dated table is cut to those days, the bunching hot spots and the by-hour chart included (they are re-aggregated from `fct_headway` over the window). The quality page is the build's own test run, so it can show a check that failed on the extra first day.
 | Map replay | `python -m transit_lakehouse.gold replay --day <Sydney date> --out dashboard/static/replay-map/data` | one JSON per local hour and the day's bunches |
 
 The extract is Parquet because Evidence bundles an older DuckDB than the Python package and cannot open the gold file (D-045).
