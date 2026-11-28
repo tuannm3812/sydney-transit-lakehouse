@@ -1,6 +1,6 @@
 # Status
 
-*Rewritten in place. Last updated 2026-11-27 (day 9; gate due 27 Nov 16:00 UTC).*
+*Rewritten in place. Last updated 2026-11-28 (Phase 0 gate passed, D-058).*
 
 **Phase 0, "Collect first".** The collector runs on AWS EC2 in Sydney (D-015, D-016) with 12 feeds since 2026-11-18 (D-025), on `main` 9a8185f since 2026-11-21 11:38 UTC. Raw snapshots go to S3 hourly and are pruned locally after 3 days (D-026). The Phase 1 light worker is built but stays off until the gate (D-027).
 
@@ -34,8 +34,8 @@ Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 
 - [x] Static GTFS timetable and Service Alerts collected (D-019)
 - [x] 24-hour report committed to `docs/reports/quota-24h.md`; quota and volume confirmed in D-024
 - [x] Light rail (Inner West) and ferries enabled after the 24 h report (D-025); 12 feeds, 70% of quota
-- [ ] Day 1 to day 7 capture ≥ 99% (record each day below)
-- [ ] Gate passed and recorded as a decision
+- [x] Day 1 to day 7 capture ≥ 99% (record each day below)
+- [x] Gate passed and recorded as a decision: 28 Nov 00:28 UTC, window 21 Nov 00:28 to 28 Nov 00:28 UTC, all 12 feeds, lowest 99.84% (bus TU); D-058, report R0-02 (`docs/reports/phase0-gate-20261128.md`)
 
 ## Daily capture log
 
@@ -51,6 +51,7 @@ Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 
 | 7 | 2026-11-24 | 100.00% (all 12 feeds) | ≤ 20 s realtime VP/TU; 84 s alerts | Server cron 24 Nov 00:05 – 25 Nov 00:05 UTC; longest realtime gap 33 s, no warnings or D-037 tags. Fourth clean day of the restarted gate. Prune 266 hours (3.99 GB), 0 failed; uploads 0 failed (3,029 objects); 52 GB free. |
 | 8 | 2026-11-25 | 100.00% capture (all 12 feeds); ferries VP and TU fail freshness | ≤ 15 s buses, trains, metro, light rail; 85 s alerts; ferries about 3,950 s | Server cron 25 Nov 00:05 – 26 Nov 00:05 UTC. TfNSW froze both ferry feeds on an empty snapshot overnight (I-22), so freshness failed while capture was 100%. Under D-055 empty snapshots are exempt and the day passes once the change is deployed. Other 10 feeds pass. Prune 265 hours (3.32 GB), 0 failed; 53 GB free. |
 | 9 | 2026-11-26 | 99.93% (service alerts); all 12 feeds pass | not recorded | Server cron 26 Nov 00:05 – 27 Nov 00:05 UTC on 6625e13 (D-055 live); longest realtime gap 59 s, no D-037 tags, no alerts. Gate preview 27 Nov 00:45 UTC over 20 Nov 16:45 onward: exit 0, all 12 feeds pass (lowest 99.48% bus TU). Uploads 0 failed; 47 GB free before the 01:40 prune. |
+| 10 | 2026-11-27 | 99.58% (service alerts); all 12 feeds pass | ≤ 21 s realtime VP/TU; 85 s alerts | Server cron 27 Nov 00:05 – 28 Nov 00:05 UTC, exit 0; longest realtime gap 65 s (light rail TU), a few single missed polls, no D-037 tags, no alerts. Prune 266 hours (4.58 GB), 0 failed; 48 GB free. **Gate check 28 Nov 00:28 UTC over 21 Nov 00:28 – 28 Nov 00:28: exit 0, all 12 feeds pass, lowest 99.84% (bus TU); I-18 allowed under D-037 on 10 feeds (D-058, R0-02).** |
 
 ## Blocked on Mike
 
@@ -58,7 +59,7 @@ Phases and gates are unchanged; later work now runs in parallel. Targets: Phase 
 
 ## Reports
 
-Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run, R2-01 gold marts dry run (interim), R3-01 ghost trips and bunching on two real days (interim).
+Phase reports follow one standard and render to PDF (docs/reports/README.md): R0-01 Phase 0 first 24 hours (interim), R1-01 light worker dry run, R2-01 gold marts dry run (interim), R3-01 ghost trips and bunching on two real days (interim), R0-02 Phase 0 seven-day capture gate (final, pass).
 
 ## Phase 1, started 2026-11-18 on branches (docs/9_phase1.md)
 

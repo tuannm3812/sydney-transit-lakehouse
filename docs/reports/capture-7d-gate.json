@@ -1,0 +1,234 @@
+{
+  "window_start": "2026-11-21T00:28:23.903436+00:00",
+  "window_end": "2026-11-28T00:28:23.903436+00:00",
+  "gate": true,
+  "feeds": [
+    {
+      "feed": "buses_vehiclepos",
+      "expected": 40320,
+      "ok": 40274,
+      "new": 40274,
+      "capture_rate": 0.99886,
+      "freshness_p50_s": 4.33138108253479,
+      "freshness_p95_s": 8.887962102890015,
+      "max_gap_s": 285.118514,
+      "staleness_s": 8.055995,
+      "coverage_start": "2026-11-21T00:28:35.091837+00:00",
+      "failures": [],
+      "longest_unchanged_s": 0.0,
+      "warnings": [
+        "upstream outage: 1 outage(s), 5.9 min, longest gap 285s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 353.3
+    },
+    {
+      "feed": "buses_tripupdates",
+      "expected": 20160,
+      "ok": 20128,
+      "new": 20128,
+      "capture_rate": 0.99841,
+      "freshness_p50_s": 5.297875881195068,
+      "freshness_p95_s": 10.570959091186523,
+      "max_gap_s": 274.689913,
+      "staleness_s": 2.572303,
+      "coverage_start": "2026-11-21T00:28:38.514833+00:00",
+      "failures": [],
+      "longest_unchanged_s": 0.0,
+      "warnings": [
+        "upstream outage: 1 outage(s), 9.7 min, longest gap 275s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 582.9
+    },
+    {
+      "feed": "sydneytrains_vehiclepos",
+      "expected": 40320,
+      "ok": 40286,
+      "new": 40254,
+      "capture_rate": 0.99916,
+      "freshness_p50_s": 5.339693069458008,
+      "freshness_p95_s": 9.976913928985596,
+      "max_gap_s": 187.134673,
+      "staleness_s": 5.874498,
+      "coverage_start": "2026-11-21T00:28:37.194630+00:00",
+      "failures": [],
+      "longest_unchanged_s": 104.267211,
+      "warnings": [
+        "upstream outage: 1 outage(s), 4.2 min, longest gap 187s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 254.7
+    },
+    {
+      "feed": "sydneytrains_tripupdates",
+      "expected": 20160,
+      "ok": 20139,
+      "new": 20121,
+      "capture_rate": 0.99896,
+      "freshness_p50_s": 11.036600112915039,
+      "freshness_p95_s": 14.923846960067749,
+      "max_gap_s": 253.341317,
+      "staleness_s": 6.844815,
+      "coverage_start": "2026-11-21T00:28:36.129959+00:00",
+      "failures": [],
+      "longest_unchanged_s": 119.935739,
+      "warnings": [
+        "upstream outage: 1 outage(s), 4.2 min, longest gap 253s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 253.3
+    },
+    {
+      "feed": "metro_vehiclepos",
+      "expected": 40320,
+      "ok": 40298,
+      "new": 40244,
+      "capture_rate": 0.99945,
+      "freshness_p50_s": 7.406512022018433,
+      "freshness_p95_s": 11.553774118423462,
+      "max_gap_s": 164.048365,
+      "staleness_s": 14.688097,
+      "coverage_start": "2026-11-21T00:28:33.399670+00:00",
+      "failures": [],
+      "longest_unchanged_s": 179.997075,
+      "warnings": [
+        "upstream outage: 1 outage(s), 2.7 min, longest gap 164s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 164.0
+    },
+    {
+      "feed": "metro_tripupdates",
+      "expected": 20160,
+      "ok": 20142,
+      "new": 20123,
+      "capture_rate": 0.99911,
+      "freshness_p50_s": 7.333924055099487,
+      "freshness_p95_s": 11.3506600856781,
+      "max_gap_s": 263.380796,
+      "staleness_s": 23.581928,
+      "coverage_start": "2026-11-21T00:28:39.122926+00:00",
+      "failures": [],
+      "longest_unchanged_s": 180.001785,
+      "warnings": [
+        "upstream outage: 1 outage(s), 4.4 min, longest gap 263s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 263.4
+    },
+    {
+      "feed": "service_alerts",
+      "expected": 10080,
+      "ok": 10068,
+      "new": 6503,
+      "capture_rate": 0.99881,
+      "freshness_p50_s": 44.42432999610901,
+      "freshness_p95_s": 85.41125798225403,
+      "max_gap_s": 183.458356,
+      "staleness_s": 11.511774,
+      "coverage_start": "2026-11-21T00:29:04.533118+00:00",
+      "failures": [],
+      "longest_unchanged_s": 65.174968,
+      "warnings": [],
+      "upstream_outages": 0,
+      "upstream_gap_s": 0
+    },
+    {
+      "feed": "static_gtfs",
+      "expected": 28,
+      "ok": 29,
+      "new": 12,
+      "capture_rate": 1.0,
+      "freshness_p50_s": null,
+      "freshness_p95_s": null,
+      "max_gap_s": 21609.65684,
+      "staleness_s": 2992.583172,
+      "coverage_start": "2026-11-21T01:45:17.751758+00:00",
+      "failures": [],
+      "longest_unchanged_s": null,
+      "warnings": [],
+      "upstream_outages": 0,
+      "upstream_gap_s": 0
+    },
+    {
+      "feed": "lightrail_innerwest_vehiclepos",
+      "expected": 40320,
+      "ok": 40283,
+      "new": 40283,
+      "capture_rate": 0.99908,
+      "freshness_p50_s": 3.4031779766082764,
+      "freshness_p95_s": 5.342793941497803,
+      "max_gap_s": 252.618594,
+      "staleness_s": 4.935539,
+      "coverage_start": "2026-11-21T00:28:32.395042+00:00",
+      "failures": [],
+      "longest_unchanged_s": 0.0,
+      "warnings": [
+        "upstream outage: 1 outage(s), 5.3 min, longest gap 253s; within D-037 allowance"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 315.1
+    },
+    {
+      "feed": "lightrail_innerwest_tripupdates",
+      "expected": 20160,
+      "ok": 20142,
+      "new": 20086,
+      "capture_rate": 0.99911,
+      "freshness_p50_s": 6.815507888793945,
+      "freshness_p95_s": 11.824856042861938,
+      "max_gap_s": 248.890479,
+      "staleness_s": 27.08933,
+      "coverage_start": "2026-11-21T00:28:29.745975+00:00",
+      "failures": [],
+      "longest_unchanged_s": 1619.999036,
+      "warnings": [
+        "upstream outage: 1 outage(s), 4.1 min, longest gap 249s; within D-037 allowance",
+        "stuck: same snapshot for 1620s"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 248.9
+    },
+    {
+      "feed": "ferries_vehiclepos",
+      "expected": 20160,
+      "ok": 20144,
+      "new": 19850,
+      "capture_rate": 0.99921,
+      "freshness_p50_s": 12.552926063537598,
+      "freshness_p95_s": 19.549885988235474,
+      "max_gap_s": 246.833469,
+      "staleness_s": 0.361328,
+      "coverage_start": "2026-11-21T00:28:25.050111+00:00",
+      "failures": [],
+      "longest_unchanged_s": 8279.994451,
+      "warnings": [
+        "upstream outage: 1 outage(s), 4.1 min, longest gap 247s; within D-037 allowance",
+        "stuck: same snapshot for 8280s"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 246.8
+    },
+    {
+      "feed": "ferries_tripupdates",
+      "expected": 20160,
+      "ok": 20148,
+      "new": 19856,
+      "capture_rate": 0.9994,
+      "freshness_p50_s": 12.441219091415405,
+      "freshness_p95_s": 19.4094660282135,
+      "max_gap_s": 191.738262,
+      "staleness_s": 24.565422,
+      "coverage_start": "2026-11-21T00:28:30.955777+00:00",
+      "failures": [],
+      "longest_unchanged_s": 8249.995562,
+      "warnings": [
+        "upstream outage: 1 outage(s), 3.2 min, longest gap 192s; within D-037 allowance",
+        "stuck: same snapshot for 8250s"
+      ],
+      "upstream_outages": 1,
+      "upstream_gap_s": 191.7
+    }
+  ]
+}
