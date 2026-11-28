@@ -25,7 +25,13 @@ with h as (
         abs(h.scheduled_headway_s)::integer as scheduled_s,
         h.observed_headway_s::integer as observed_s
     from {{ ref('fct_headway') }} h
-    join {{ ref('stg_service_day') }} d on d.service_date = h.service_date
+    -- the version from the per-day trip outcomes, not stg_service_day,
+    -- which holds only the latest build's window (D-060)
+    join (
+        select service_date, any_value(timetable_version) as version
+        from {{ ref('fct_trip_outcome') }}
+        group by 1
+    ) d on d.service_date = h.service_date
     where h.scheduled_headway_s <> 0
 )
 

@@ -73,8 +73,15 @@
     ('{{ var(name) | join("', '") }}')
 {%- endmacro %}
 
-{# A zero delay from a feed that never reports early running (D-059). #}
+{# A zero delay from a feed that never reports early running (D-059),
+   read from the delay rebuilt from the D-028 encoding, not the stop
+   row's own, which a uniform trip-delay shift leaves stale. Not at an
+   origin whose time is a stale departure estimate. Used in
+   fct_stop_arrival's last select, over its timed CTE. #}
 {% macro early_hidden() -%}
     (mode in {{ mode_list('no_early_modes') }}
-        and predicted_arrival_utc <= left_feed_at and row_delay_s = 0)
+        and predicted_arrival_utc <= left_feed_at
+        and timed.delay_s = 0
+        and not (at_origin
+            and mode in {{ mode_list('untimed_origin_modes') }}))
 {%- endmacro %}

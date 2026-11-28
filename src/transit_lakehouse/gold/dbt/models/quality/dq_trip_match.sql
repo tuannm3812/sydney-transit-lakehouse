@@ -19,7 +19,9 @@ with rt as (
         service_date,
         bool_or(starts_with(rt_route_id, '{{ var("unplanned_route_prefix") }}'))
             as unplanned,
-        max(fetched_at) - min(fetched_at)
+        -- silver is change-only, so a trip whose state never changed
+        -- has one row: it was seen until the next row (its REMOVED row)
+        max(coalesce(next_fetched_at, fetched_at)) - min(fetched_at)
             < interval {{ var('min_trip_seen_minutes') }} minute as blip
     from {{ ref('stg_rt_trip_state') }}
     where trip_status in ('SCHEDULED', 'CANCELED')

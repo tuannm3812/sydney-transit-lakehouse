@@ -9,7 +9,22 @@
 -- modes, so stg_rt_trip_state moves after-midnight trips back as usual.
 -- A run that matches no scheduled trip is dated by the Sydney day of
 -- its first row and stays unmatched, so dq_trip_match still counts it.
-with undated as (
+-- Runs are taken from trip updates and vehicle positions together, so
+-- a train seen only in positions is dated too. A row belongs to a run
+-- from 2 hours before its first row to 2 hours after its last.
+with sightings as (
+    select mode, trip_id, fetched_at
+    from {{ source('silver', 'trip_status') }}
+    where start_date is null and trip_id is not null
+
+    union all
+
+    select mode, trip_id, fetched_at
+    from {{ source('silver', 'vehicle_position') }}
+    where start_date is null and trip_id is not null
+),
+
+undated as (
     select
         mode,
         trip_id,
@@ -19,8 +34,7 @@ with undated as (
                 or fetched_at - lag(fetched_at) over w > interval 4 hour
             then 1 else 0
         end as new_run
-    from {{ source('silver', 'trip_status') }}
-    where start_date is null and trip_id is not null
+    from sightings
     window w as (partition by mode, trip_id order by fetched_at)
 ),
 

@@ -230,7 +230,8 @@ def retrip(con: duckdb.DuckDBPyConnection) -> None:
         joined as (
             select r.*, s.entities, s.prev_entities,
                 s.prev_entities >= 50
-                    and r.removed / s.prev_entities > 0.5 as mass
+                    and r.removed / s.prev_entities > 0.5 as mass,
+                s.entities = 0 and r.mode = 'train' as empty_ok
             from removals r
             left join snaps s
                 on s.feed = r.feed and s.fetched_at = r.fetched_at
@@ -239,8 +240,8 @@ def retrip(con: duckdb.DuckDBPyConnection) -> None:
             sum(with_stops) as removed_with_stops,
             max(removed / prev_entities) filter (prev_entities > 0)
                 as worst_removed_share,
-            count(*) filter (mass and entities > 0) as mass_endings,
-            count(*) filter (mass and entities = 0) as empty_endings
+            count(*) filter (mass and not empty_ok) as mass_endings,
+            count(*) filter (mass and empty_ok) as empty_endings
         from joined group by all
         """
     )
@@ -631,18 +632,48 @@ def test_one_snapshot_ending_most_trips_fails(
                 " 'REMOVED', 0, ?)",
                 [f"x{i}", t + timedelta(seconds=30)],
             )
-    res = run(db)
-    if entities_after:
-        assert failed(res) == {("2026-11-25", "trip_left:burst", "bus")}
-    else:
-        # A readable empty feed (Sydney Trains at 1 am, D-059) warns.
-        assert failed(res) == set()
-        warns = [
-            c["check"]
-            for c in res["days"][0]["checks"]
-            if c["status"] == "warn"
-        ]
-        assert warns == ["trip_left:empty"]
+    # An empty but readable snapshot is a bad ending too, for buses: only
+    # Sydney Trains' nightly empty feed is let through (D-059).
+    assert failed(run(db)) == {("2026-11-25", "trip_left:burst", "bus")}
+
+
+def test_an_empty_train_feed_only_warns(db: Path) -> None:
+    # Sydney Trains empties for about 90 s at 1 am Sydney (D-059).
+    t = datetime(2026, 11, 25, 14, 0, tzinfo=UTC)
+    sql(
+        db,
+        "update gold.fct_trip_outcome set mode = 'train' where mode = 'ferry'",
+        "update staging.stg_rt_trip_state set mode = 'train'"
+        " where mode = 'ferry'",
+        "update bronze.snapshot set mode = 'train' where mode = 'ferry'",
+    )
+    with duckdb.connect(str(db)) as con:
+        remart(con)
+        con.execute(
+            SNAP_INSERT
+            + " ('ferry_tripupdates', 'train', 'trip_updates', ?, 200)",
+            [t],
+        )
+        con.execute(
+            SNAP_INSERT
+            + " ('ferry_tripupdates', 'train', 'trip_updates', ?, 0)",
+            [t + timedelta(seconds=30)],
+        )
+        for i in range(150):
+            con.execute(
+                "insert into staging.stg_rt_trip_state values"
+                " ('train', 'ferry_tripupdates', ?, '2026-11-25',"
+                " 'REMOVED', 0, ?)",
+                [f"x{i}", t + timedelta(seconds=30)],
+            )
+    res = run(db, modes=["train"])
+    # the other quality tables still name the mode ferry; only the
+    # trip-left checks matter here
+    assert not {f for f in failed(res) if f[1].startswith("trip_left")}
+    warns = [
+        c["check"] for c in res["days"][0]["checks"] if c["status"] == "warn"
+    ]
+    assert "trip_left:empty" in warns
 
 
 def test_since_and_until_limit_the_days(db: Path) -> None:

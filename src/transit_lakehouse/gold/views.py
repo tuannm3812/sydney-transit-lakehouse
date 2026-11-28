@@ -29,7 +29,12 @@ from datetime import date
 import duckdb
 from pyiceberg.catalog import Catalog
 from pyiceberg.exceptions import NoSuchNamespaceError
-from pyiceberg.expressions import AlwaysTrue, GreaterThanOrEqual
+from pyiceberg.expressions import (
+    AlwaysTrue,
+    And,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+)
 from pyiceberg.types import (
     BooleanType,
     DateType,
@@ -107,12 +112,20 @@ def view_sql(name: str, schema, files: list[str]) -> str:
     )
 
 
-def live_files(table, since: date | None = None) -> list[str]:
-    """Paths of the table's current data files (pruned by ``since``)."""
+def live_files(
+    table, since: date | None = None, until: date | None = None
+) -> list[str]:
+    """Paths of the table's current data files, pruned to poll dates
+    ``since`` to ``until`` (either open)."""
     names = {f.name for f in table.schema().fields}
     row_filter = AlwaysTrue()
-    if since is not None and DATED & names:
-        row_filter = GreaterThanOrEqual("obs_date", since.isoformat())
+    if DATED & names:
+        if since is not None:
+            row_filter = GreaterThanOrEqual("obs_date", since.isoformat())
+        if until is not None:
+            row_filter = And(
+                row_filter, LessThanOrEqual("obs_date", until.isoformat())
+            )
     tasks = list(table.scan(row_filter=row_filter).plan_files())
     if any(t.delete_files for t in tasks):
         raise DeleteFilesError(
@@ -125,6 +138,7 @@ def refresh_views(
     con: duckdb.DuckDBPyConnection,
     catalog: Catalog,
     since: date | None = None,
+    until: date | None = None,
 ) -> list[ViewInfo]:
     """(Re)create a view for every bronze and silver table."""
     out: list[ViewInfo] = []
@@ -137,7 +151,7 @@ def refresh_views(
         for ident in sorted(idents):
             name = ".".join(ident)
             table = catalog.load_table(name)
-            files = live_files(table, since)
+            files = live_files(table, since, until)
             con.execute(view_sql(name, table.schema(), files))
             out.append(ViewInfo(name, len(files), len(table.schema().fields)))
     return out

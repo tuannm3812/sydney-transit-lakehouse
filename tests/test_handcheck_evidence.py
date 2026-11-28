@@ -59,7 +59,7 @@ def feed(trip_ids: list[str], label: str = "") -> bytes:
 @pytest.fixture
 def con():
     c = duckdb.connect()
-    for schema in ("bronze", "silver", "staging"):
+    for schema in ("bronze", "silver", "staging", "gold"):
         c.execute(f"create schema {schema}")
     c.execute(
         "create table bronze.snapshot (source_file varchar,"
@@ -121,7 +121,7 @@ def test_pruned_raw_files_block_a_clean_reading(con, tmp_path: Path) -> None:
 
 def alert_tables(con) -> None:
     con.execute(
-        "create table staging.stg_scheduled_trip as"
+        "create table gold.fct_trip_outcome as"
         " select '1234' as trip_id, date '2026-11-18' as service_date,"
         " 'R1' as route_id"
     )
@@ -169,9 +169,13 @@ def test_removed_alerts_do_not_explain_a_ghost(con) -> None:
 
 def test_quarantined_positions_are_not_untracked_vehicles(con) -> None:
     con.execute(
-        "create table staging.stg_scheduled_trip as"
+        "create table gold.fct_trip_outcome as"
         " select '1234' as trip_id, date '2026-11-18' as service_date,"
-        " 'P1' as pattern_id, 'v1' as version"
+        " 'v1' as timetable_version"
+    )
+    con.execute(
+        "create table silver.timetable_trip as select 'v1' as version,"
+        " '1234' as trip_id, 'P1' as pattern_id"
     )
     con.execute(
         "create table silver.timetable_pattern_stop as"

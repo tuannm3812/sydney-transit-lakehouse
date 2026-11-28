@@ -255,12 +255,16 @@ def _silver(con, ev: Evidence, lo, hi) -> None:
 def _untracked(con, ev: Evidence, near_m: float) -> None:
     first = con.execute(
         "select s.stop_lat, s.stop_lon"
-        " from staging.stg_scheduled_trip t"
+        # the per-day outcome, not staging, which holds only the latest
+        # build's window (D-060)
+        " from gold.fct_trip_outcome o"
+        " join silver.timetable_trip t"
+        "   on t.version = o.timetable_version and t.trip_id = o.trip_id"
         " join silver.timetable_pattern_stop p"
         "   on p.pattern_id = t.pattern_id"
         " join silver.timetable_stop s"
         "   on s.version = t.version and s.stop_id = p.stop_id"
-        " where t.trip_id = ? and t.service_date = ?"
+        " where o.trip_id = ? and o.service_date = ?"
         " order by p.stop_sequence limit 1",
         [ev.trip_id, ev.service_date],
     ).fetchall()
@@ -303,7 +307,7 @@ def _alerts(con, ev: Evidence, lo, hi) -> None:
         " from silver.alert_scope s"
         " join versions a"
         "   on a.alert_id = s.alert_id and a.content_hash = s.content_hash"
-        " join staging.stg_scheduled_trip t"
+        " join gold.fct_trip_outcome t"
         "   on t.trip_id = ? and t.service_date = ?"
         " where (s.trip_id = t.trip_id or s.route_id = t.route_id)"
         " and a.event <> 'removed'"

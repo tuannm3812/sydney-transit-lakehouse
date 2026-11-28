@@ -59,6 +59,8 @@ vars:
   # trips the feed carried, with at least this many, is a mass ending.
   mass_removal_share: 0.5
   mass_removal_min_trips: 50
+  # ... except at an empty readable snapshot of these modes (D-059).
+  empty_feed_modes: ["train"]
   # Greater Sydney box for routes whose network spans regions.
   sydney_box: {min_lat: -34.25, max_lat: -33.45, min_lon: 150.45, max_lon: 151.40}
 

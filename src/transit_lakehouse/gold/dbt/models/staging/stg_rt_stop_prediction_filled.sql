@@ -23,7 +23,13 @@ stop_call as (
 
 -- rows missing a start_date or a stop_sequence, the start_date filled
 fix as (
-    select s.* replace (coalesce(s.start_date, r.start_date) as start_date)
+    select s.* replace (
+        coalesce(
+            s.start_date,
+            case when s.fetched_at <= r.run_to + interval 2 hour
+                then r.start_date end
+        ) as start_date
+    )
     from {{ source('silver', 'stop_prediction') }} s
     asof left join {{ ref('stg_rt_run') }} r
         on r.mode = s.mode
