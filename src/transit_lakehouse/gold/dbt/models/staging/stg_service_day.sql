@@ -1,3 +1,4 @@
+{{ config(materialized="table") }}
 -- One row per service day with realtime trips, with the UTC origin of
 -- its GTFS clock and the timetable version in effect. That is the
 -- version, among those fetched before the day ended, that carries the
